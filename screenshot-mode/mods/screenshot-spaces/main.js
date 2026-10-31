@@ -6,7 +6,7 @@
 import { View, div, svg } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, matches, phrases, setPhrases } from "./privacy.js";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText } from "./privacy.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -94,13 +94,19 @@ export default class Spaces extends View {
 
   // The phrase list dialog (this mod opened as an overlay with { phrases: true }).
   initEditor(cx) {
-    this.input = InputState.new({ value: "", placeholder: "Add a phrase, press Enter" });
-    this.input.on("submit", (_e, cx) => {
-      const v = this.input.value().trim();
-      if (v) setPhrases([...phrases(), v]);
+    this.input = InputState.new({ value: "", placeholder: "Phrase to hide" });
+    this.alias = InputState.new({ value: "", placeholder: "Alias (optional)" });
+    // Enter in either box adds the phrase; adding one that exists replaces its alias.
+    const add = (_e, cx) => {
+      const text = this.input.value().trim();
+      if (text) setPhrases([...phrases(), { text, alias: this.alias.value().trim() }]);
       this.input.set_value("");
+      this.alias.set_value("");
+      this.input.focus();
       cx.notify();
-    });
+    };
+    this.input.on("submit", add);
+    this.alias.on("submit", add);
     this.input.focus();
     cx.timer.after(300, () => this.input.focus());
     this.handle = cx.focus_handle();
@@ -110,19 +116,24 @@ export default class Spaces extends View {
     const t = theme();
     const list = phrases();
     const done = () => closeOverlay(props().overlay);
+    const box = (state, accent) => Input.new(state).h(34).px(10).rounded(8).border_1().border_color(accent ? t.accent : t.input).bg(t.background).text_size(12.8);
     return v_flex().id("phrases").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { done(); cx.stop_propagation(); } })
       .size_full().min_h(0).p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
         .child(div().text_size(11).text_color(t.dim).child("Esc")))
       .child(div().text_size(11.5).text_color(t.muted).child("In screenshot mode, any space, machine, tab or terminal whose name, title, folder, repo or branch contains one of these (any case) is hidden."))
-      .child(Input.new(this.input).h(34).px(10).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8))
-      .child(v_flex().id("phrase-list").flex_none().max_h(220).gap(2).overflow_y_scrollbar()
+      .child(div().text_size(11.5).text_color(t.muted).child("With an alias, the phrase is swapped for it (\"top secret client name\" shows as \"bob\"). Without one, the name becomes \"Space 2\" or similar. Click a phrase to edit it."))
+      .child(h_flex().gap(8).child(div().flex_1().child(box(this.input, true))).child(div().w(140).flex_none().child(box(this.alias, false))))
+      .child(v_flex().id("phrase-list").flex_none().h(Math.min(Math.max(list.length, 1) * 30, 220)).gap(2).overflow_y_scrollbar()
         .when(!list.length, el => el.child(div().py(6).text_color(t.dim).child("No phrases yet.")))
         .children(list.map((ph, i) => h_flex().id(`ph-${i}`).h(28).px(8).gap(8).items_center().rounded(6).bg(t.raised)
-          .child(div().flex_1().truncate().child(ph))
+          .cursor_pointer().hover(s => s.bg(t.hover))
+          .on_click((_e, cx) => { this.input.set_value(ph.text); this.alias.set_value(ph.alias); this.alias.focus(); cx.notify(); })
+          .child(div().flex_1().min_w(0).truncate().child(ph.text))
+          .child(div().max_w(150).truncate().text_color(ph.alias ? t.muted : t.dim).child(ph.alias ? `\u2192 ${ph.alias}` : "no alias"))
           .child(div().id(`ph-x-${i}`).p(3).rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
-            .on_click((_e, cx) => { setPhrases(list.filter((_, j) => j !== i)); cx.notify(); })
+            .on_click((_e, cx) => { cx.stop_propagation(); setPhrases(list.filter((_, j) => j !== i)); cx.notify(); })
             .child(svg("mods/workspace-chrome/x.svg").size(12))))))
       .child(h_flex().justify_end().child(h_flex().id("ph-done").h(32).px(14).items_center().rounded(8)
         .bg(t.solid).text_color(t.solid_foreground).font_medium().cursor_pointer().hover(s => s.opacity(0.88))
@@ -352,7 +363,11 @@ export default class Spaces extends View {
     const on = w.active;
     const masked = spaceMasked(w);
     const name = spaceName(w);
-    if (masked || (privacyOn() && g && matches(g.name, g.branch))) g = null;
+    // Repo and branch: aliased where they can be, else the whole tail goes.
+    if (g) {
+      const gn = spaceText(w, g.name, null), gb = g.branch ? spaceText(w, g.branch, null) : g.branch;
+      g = gn === null || gb === null ? null : { ...g, name: gn, branch: gb };
+    }
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -402,7 +417,7 @@ export default class Spaces extends View {
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(masked ? "•" : [...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
-          .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
+          .child(g ? this.gitTail(g, tree, name, t) : div().flex_1())
           .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; }),
       );
   }

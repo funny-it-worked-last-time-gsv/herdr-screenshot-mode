@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
-import { spaceMasked, spaceName, machineName, tabMasked } from "./privacy.js";
+import { spaceName, machineName, tabText } from "./privacy.js";
 
 // Screenshot mode: the space name as shown (masked if hidden).
 const sn = (a) => { const w = spaces().find((x) => x.id === a.space); return w ? spaceName(w) : a.space_name; };
@@ -271,9 +271,9 @@ export default class Agents extends View {
     // otherwise read the same.
     const tabs = spaces().flatMap(s => s.tabs);
     const label = (a) => {
-      if (tabMasked(a.tab)) return a.program?.name || "Agent";
       const tab = tabs.find(tab => tab.id === a.tab);
-      return tab ? title(tab, lead(tab)) : a.title || a.program?.name || "";
+      const real = tab ? title(tab, lead(tab)) : a.title || a.program?.name || "";
+      return tabText(a.tab, real, a.program?.name || "Agent");
     };
     const detail = new Map(list.map(a => [a.address, /^\d+$/.test(label(a)) ? null : label(a)]));
     const seen = {};

@@ -4,7 +4,9 @@ Hide the names of chosen spaces and machines in the [Herdr app](https://herdr.de
 
 ![Screenshot mode](screenshot-mode/preview.png)
 
-Hover a space or machine in the Spaces sidebar and click its eye to mark it. Or click the pen next to "Spaces" and add phrases (a client name, a hostname, a repo): anything whose name, title, folder, repo or branch contains one is hidden automatically. Then press Cmd+Shift+H, or click the eye next to "Spaces", to turn screenshot mode on. Marked spaces show as "Space N" and marked machines as "Machine N" everywhere: the sidebar, tab bar, agents list, pane headers and status bar. Press Cmd+Shift+H again to get the real names back. Hover the eye next to "Spaces" for a reminder.
+Hover a space or machine in the Spaces sidebar and click its eye to mark it. Or click the pen next to "Spaces" and add phrases (a client name, a hostname, a repo). Anything whose name, title, folder, repo or branch contains one is hidden automatically. Give a phrase an alias and it is swapped in place instead: with "top secret client name" → "bob", a space called "top secret client name api" shows as "bob api".
+
+![Hide phrases dialog](screenshot-mode/phrases.png) Then press Cmd+Shift+H, or click the eye next to "Spaces", to turn screenshot mode on. Hidden spaces without an alias show as "Space N" and hidden machines as "Machine N" everywhere: the sidebar, tab bar, agents list, pane headers and status bar. Press Cmd+Shift+H again to get the real names back. Hover the eye next to "Spaces" for a reminder.
 
 It can't hide what your terminals print (shell prompts, paths in output). See [screenshot-mode/RECIPE.md](screenshot-mode/RECIPE.md) for the details and how it is built.
 

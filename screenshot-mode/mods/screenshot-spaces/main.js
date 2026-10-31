@@ -4,9 +4,9 @@
 // switch, right-click for its menu, drag to reorder.
 
 import { View, div, svg } from "gpui-kit";
-import { v_flex, h_flex } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName } from "./privacy.js";
+import { v_flex, h_flex, InputState, Input } from "gpui-base";
+import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, matches, phrases, setPhrases } from "./privacy.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -48,6 +48,7 @@ export function tone(t, status) {
 
 export default class Spaces extends View {
   init(_props, cx) {
+    if (props()?.phrases) return this.initEditor(cx);
     this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -75,14 +76,57 @@ export default class Spaces extends View {
 
   // Eye button that marks a space or machine as hidden in screenshot mode. Shown on
   // hover, and always (dim) while marked so you can see what will be masked.
-  eye(id, key, t) {
+  // `hidden`: marked by hand or matched by a phrase. A phrase match can't be unmarked
+  // here, so clicking it opens the phrase list instead.
+  eye(id, key, hidden, t) {
     const marked = isMarked(key);
-    if (this.hoverRow !== id && !(marked && !privacyOn())) return null;
-    return div().id(`eye-${id}`).flex_none().p(2).rounded(4).text_color(marked ? t.accent : t.dim)
+    if (this.hoverRow !== id && !(hidden && !privacyOn())) return null;
+    return div().id(`eye-${id}`).flex_none().p(2).rounded(4).text_color(hidden ? t.accent : t.dim)
       .hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); toggleMarked(key); cx.notify(); })
-      .child(svg(`mods/screenshot-spaces/${marked ? "eye-off" : "eye"}.svg`).size(12));
+      .on_click((_e, cx) => { cx.stop_propagation(); hidden && !marked ? this.openEditor() : toggleMarked(key); cx.notify(); })
+      .child(svg(`mods/screenshot-spaces/${hidden ? "eye-off" : "eye"}.svg`).size(12));
+  }
+
+  openEditor() {
+    openOverlay({ mod: "screenshot-spaces", kind: "dialog", width: 380, height: 420, props: { phrases: true } });
+  }
+
+  // The phrase list dialog (this mod opened as an overlay with { phrases: true }).
+  initEditor(cx) {
+    this.input = InputState.new({ value: "", placeholder: "Add a phrase, press Enter" });
+    this.input.on("submit", (_e, cx) => {
+      const v = this.input.value().trim();
+      if (v) setPhrases([...phrases(), v]);
+      this.input.set_value("");
+      cx.notify();
+    });
+    this.input.focus();
+    cx.timer.after(300, () => this.input.focus());
+    this.handle = cx.focus_handle();
+  }
+
+  editor() {
+    const t = theme();
+    const list = phrases();
+    const done = () => closeOverlay(props().overlay);
+    return v_flex().id("phrases").track_focus(this.handle)
+      .on_key_down((e, cx) => { if (e.key === "escape") { done(); cx.stop_propagation(); } })
+      .size_full().min_h(0).p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(12.5)
+      .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
+        .child(div().text_size(11).text_color(t.dim).child("Esc")))
+      .child(div().text_size(11.5).text_color(t.muted).child("In screenshot mode, any space, machine, tab or terminal whose name, title, folder, repo or branch contains one of these (any case) is hidden."))
+      .child(Input.new(this.input).h(34).px(10).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8))
+      .child(v_flex().id("phrase-list").flex_none().max_h(220).gap(2).overflow_y_scrollbar()
+        .when(!list.length, el => el.child(div().py(6).text_color(t.dim).child("No phrases yet.")))
+        .children(list.map((ph, i) => h_flex().id(`ph-${i}`).h(28).px(8).gap(8).items_center().rounded(6).bg(t.raised)
+          .child(div().flex_1().truncate().child(ph))
+          .child(div().id(`ph-x-${i}`).p(3).rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+            .on_click((_e, cx) => { setPhrases(list.filter((_, j) => j !== i)); cx.notify(); })
+            .child(svg("mods/workspace-chrome/x.svg").size(12))))))
+      .child(h_flex().justify_end().child(h_flex().id("ph-done").h(32).px(14).items_center().rounded(8)
+        .bg(t.solid).text_color(t.solid_foreground).font_medium().cursor_pointer().hover(s => s.opacity(0.88))
+        .on_click(() => done()).child("Done")));
   }
 
   hovering(id) {
@@ -268,7 +312,7 @@ export default class Spaces extends View {
         })
         .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
         .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ? machineName(m) : "This computer"))
-          .when(Boolean(m), el => { const e = this.eye(`machine-${m}`, machineKey(m), t); return e ? el.child(e) : el; })
+          .when(Boolean(m), el => { const e = this.eye(`machine-${m}`, machineKey(m), machineHidden(m), t); return e ? el.child(e) : el; })
           .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
             .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
@@ -308,7 +352,7 @@ export default class Spaces extends View {
     const on = w.active;
     const masked = spaceMasked(w);
     const name = spaceName(w);
-    if (masked) g = null;
+    if (masked || (privacyOn() && g && matches(g.name, g.branch))) g = null;
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -359,7 +403,7 @@ export default class Spaces extends View {
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(masked ? "•" : [...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
           .child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())
-          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), t); return e ? el.child(e) : el; }),
+          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; }),
       );
   }
 
@@ -392,6 +436,7 @@ export default class Spaces extends View {
         .child(div().flex_1().truncate().child(m ? machineName(m) : "This computer"))));
   }
   render() {
+    if (props()?.phrases) return this.editor();
     const t = theme();
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
@@ -407,12 +452,16 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     const tip = privacyOn()
-      ? ["Screenshot mode is ON", "Marked spaces and machines show as \"Space N\" / \"Machine N\".", "Click the eye or press Cmd+Shift+H to turn it off."]
-      : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names."];
+      ? ["Screenshot mode is ON", "Marked spaces and machines show as \"Space N\" / \"Machine N\".", "Click the eye or press Cmd+Shift+H to turn it off.", "Click the pen to edit the hide phrases."]
+      : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names.", "3. Click the pen to edit phrases that hide matching names automatically."];
     return v_flex().relative().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         .when(!collapsed, el => el.child(privacyOn() ? "Spaces · screenshot mode" : "Spaces"))
         .child(h_flex().gap(2).items_center()
+        .child(div().id("phrases-edit").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+          .text_color(phrases().length ? t.accent : t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .on_click(() => this.openEditor())
+          .child(svg("mods/workspace-chrome/square-pen.svg").size(14)))
         .child(div().id("privacy-toggle").size(26).flex_none().flex().items_center().justify_center().rounded(6)
           .text_color(privacyOn() ? t.accent : t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_hover((h, cx) => { this.tip = h; cx.notify(); })

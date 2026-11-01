@@ -333,10 +333,12 @@ export default class Agents extends View {
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(under ? 40 : 30)
+        .h(under ? 44 : 30)
         .flex_none()
         .rounded(8)
-        .items_center()
+        // Two lines: everything beside the text lines up with the first one.
+        .when(Boolean(under), (el) => el.items_start().pt(5))
+        .when(!under, (el) => el.items_center())
         .gap(9)
         .when(a.focused, (el) => el.bg(t.selected))
         .cursor_pointer()
@@ -347,7 +349,7 @@ export default class Agents extends View {
           cx.notify();
         })
         .on_click(() => run("pane.focus", { pane: a.pane }))
-        .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`)
+        .when(Boolean(pic), el => el.child(div().id(`agent-fold-${a.address}`).h(20).flex().items_center()
           .when(subs.length > 0, el => el.on_click((_e, cx) => {
             cx.stop_propagation();
             this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
@@ -356,10 +358,11 @@ export default class Agents extends View {
         .child(v_flex().flex_1().min_w(0).gap(1)
           .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(Boolean(under), el => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(under))))
-        .when(subs.length > 0, el => el.child(fold(a, subs)))
-        .when(this.hovered === a.address, el => el.child(pin))
-        .when(this.hovered !== a.address && Boolean(timing), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(timing)))
-        .child(this.status(t, a, byPriority && !isPinned));
+        .child(h_flex().h(20).flex_none().gap(9).items_center()
+          .when(subs.length > 0, el => el.child(fold(a, subs)))
+          .when(this.hovered === a.address, el => el.child(pin))
+          .when(this.hovered !== a.address && Boolean(timing), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(timing)))
+          .child(this.status(t, a, byPriority && !isPinned)));
     };
 
     // Groups in list order: spaces (grouped) or priority sections. Agents of a

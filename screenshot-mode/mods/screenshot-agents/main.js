@@ -1,9 +1,9 @@
-// Agents in grouped or priority views; parents take their most urgent sub-agent's place.
+// Agents by priority; parents take their most urgent sub-agent's place.
 // A viewed done agent stays in Done until left.
 
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
-import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
+import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, window, layout } from "herdr";
 import { spaceName, machineName, tabText } from "./privacy.js";
 import { turn, label as turnLabel, prune } from "./timing.js";
 
@@ -51,11 +51,6 @@ const kidStatus = (k, listed) => {
   const s = listed.get(k.address) ?? k.status;
   return s === "error" ? "blocked" : s === "done" ? "idle" : s;
 };
-const SORTS = [
-  { id: "priority", label: "Priority", icon: "clock" },
-  { id: "grouped", label: "Grouped by space", icon: "layers" },
-];
-const sortOf = () => SORTS.find((s) => s.id === shared("agents.sort")) ?? SORTS[0];
 const SECTION = { 4: "Needs you", 3: "Done", 2: "Working", 1: "Idle" };
 const SECTION_STATUS = { 4: "blocked", 3: "done", 2: "working" };
 
@@ -75,7 +70,6 @@ function icon(p, size, color) {
 
 export default class Agents extends View {
   init(_props, cx) {
-    if (props()?.sortMenu) return;
     this.folded = new Set();
     // Each agent's last state and when it changed (ms), kept across restarts.
     this.changed = JSON.parse(localStorage.getItem("changed") ?? "{}");
@@ -133,32 +127,6 @@ export default class Agents extends View {
     return sawDone ? RANK.done : RANK[a.status] ?? 0;
   }
 
-  sortMenu(t) {
-    const on = sortOf().id;
-    return v_flex()
-      .w_full()
-      .p(5)
-      .bg(t.popover)
-      .text_size(12.8)
-      .child(div().px(8).pt(4).pb(6).text_size(11).text_color(t.dim).child("Sort agents"))
-      .children(SORTS.map((s) => h_flex()
-        .id(`sort-${s.id}`)
-        .h(31)
-        .px(8)
-        .gap(9)
-        .rounded(7)
-        .items_center()
-        .text_color(t.foreground)
-        .hover((el) => el.bg(t.hover))
-        .on_click(() => {
-          setShared("agents.sort", s.id);
-          closeOverlay(props().overlay);
-        })
-        .child(svg(`mods/workspace-chrome/${s.icon}.svg`).size(14).flex_none().text_color(t.muted))
-        .child(div().flex_1().child(s.label))
-        .when(s.id === on, (el) => el.child(svg("mods/workspace-chrome/check.svg").size(14).flex_none().text_color(t.foreground)))));
-  }
-
   peek(addr) {
     run("terminal.peek", { terminal: addr });
   }
@@ -214,9 +182,7 @@ export default class Agents extends View {
 
   render(cx) {
     const t = theme();
-    if (props()?.sortMenu) return this.sortMenu(t);
     const collapsed = narrow();
-    const sort = sortOf();
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
@@ -224,10 +190,9 @@ export default class Agents extends View {
     const now = Date.now();
     this.track(list, now);
     this.hold(list);
-    const byPriority = sort.id === "priority";
     const urgency = new Map(list.map((a) => [a.address, Math.max(this.rank(a), ...this.tree(all, a.address).map((s) => RANK[kidStatus(s.t, this.listed)] ?? 0))]));
     const rankOf = (a) => urgency.get(a.address);
-    if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
+    list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     this.prunePins(all);
     prune(new Set(all.map((k) => k.address)), now);
     const pinned = this.pins.map((p) => list.find((a) => a.address === p)).filter(Boolean);
@@ -239,7 +204,7 @@ export default class Agents extends View {
       const subs = collapsed ? [] : this.tree(all, a.address);
       const r = row(a, i, subs);
       if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, byPriority))];
+      return [r, ...subs.map((s) => this.subRow(t, s, shown, true))];
     };
 
     // The fold chevron; folded, the count too, colored by the most urgent one.
@@ -325,9 +290,8 @@ export default class Agents extends View {
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space, on a second,
       // smaller line with the machine: the first line keeps room for the tab and the timing.
-      const full = byPriority || isPinned;
-      const space = full ? sn(a) : null;
-      const name = full ? more || space || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const space = sn(a);
+      const name = more || space || label(a);
       const under = [space && space !== name ? space : null, machine ? machineName(machine) : null].filter(Boolean).join(" \u00b7 ");
       const timing = turnLabel(turn(a.address, a.status, now)) || (when ? duration(now - when) : "");
       return h_flex()
@@ -362,17 +326,17 @@ export default class Agents extends View {
           .when(subs.length > 0, el => el.child(fold(a, subs)))
           .when(this.hovered === a.address, el => el.child(pin))
           .when(this.hovered !== a.address && Boolean(timing), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(timing)))
-          .child(this.status(t, a, byPriority && !isPinned)));
+          .child(this.status(t, a, !isPinned)));
     };
 
-    // Groups in list order: spaces (grouped) or priority sections. Agents of a
+    // Groups in list order: priority sections. Agents of a
     // space are next to each other in agents(), so neighbours make a group.
     const groups = pinned.length ? [{ id: "pinned", label: "Pinned", status: null, members: pinned }] : [];
     for (const a of rest) {
       const r = rankOf(a) || RANK.idle;
-      const id = byPriority ? `sec-${r}` : `sp-${a.space}`;
+      const id = `sec-${r}`;
       if (groups.at(-1)?.id === id) groups.at(-1).members.push(a);
-      else groups.push({ id, label: byPriority ? SECTION[r] : sn(a) || "", status: byPriority ? SECTION_STATUS[r] : null, members: [a] });
+      else groups.push({ id, label: SECTION[r], status: SECTION_STATUS[r], members: [a] });
     }
 
     // A group's header; it folds the group. Folded, it says how many and the most urgent state.
@@ -396,10 +360,9 @@ export default class Agents extends View {
           cx.notify();
         })
         .child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))
-        .when(byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))
+        .child(div().text_color(t.dim).child(String(g.members.length)))
         .child(div().flex_1())
         .when(!open, (el) => el
-          .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))
           .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
     };
     const rows = collapsed
@@ -423,17 +386,7 @@ export default class Agents extends View {
             .flex_none()
             .items_center()
             .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents"))
-            .child(
-              div()
-                .id("ag-sort")
-                .text_size(11)
-                .text_color(t.dim)
-                .hover((s) => s.text_color(t.foreground))
-                .on_click(() => openOverlay({ mod: "screenshot-agents", kind: "popup", width: 200, height: 140, props: { sortMenu: true } }))
-                .tooltip(`Sort agents: ${sort.label}`)
-                .child(svg(`mods/workspace-chrome/${sort.icon}.svg`).size(14)),
-            ),
+            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents")),
         ),
       )
       .when(list.length === 0 && !collapsed, (el) =>

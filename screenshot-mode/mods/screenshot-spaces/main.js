@@ -10,9 +10,6 @@ import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey,
 import { turn, command, label as turnLabel } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 
-// The header's height: a folded section is just this.
-const HEADER = 31;
-
 function find(node, id) {
   if (node?.id === id) return node;
   for (const child of node?.children ?? []) {
@@ -651,13 +648,13 @@ export default class Spaces extends View {
       : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names.", "3. Click the pen to edit phrases that hide matching names automatically."];
     // Folded to its header (never on the narrow rail, which has no header).
     const shut = folded() && !collapsed;
-    keepFolded("screenshot-spaces", HEADER);
+    keepFolded("screenshot-spaces");
     return v_flex().relative().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
         // The title folds the section.
         .when(!collapsed, el => el.child(h_flex().id("spaces-fold").gap(6).items_center().cursor_pointer()
           .hover(s => s.text_color(t.foreground))
-          .on_click((_e, cx) => { toggleFold("screenshot-spaces", HEADER); cx.notify(); })
+          .on_click((_e, cx) => { toggleFold("screenshot-spaces"); cx.notify(); })
           .child(privacyOn() ? "Spaces · screenshot mode" : "Spaces")
           .when(shut, el => el.child(div().child(String(spaces().length))))
           .child(svg(`mods/workspace-chrome/chevron-${shut ? "right" : "down"}.svg`).size(11).flex_none())))

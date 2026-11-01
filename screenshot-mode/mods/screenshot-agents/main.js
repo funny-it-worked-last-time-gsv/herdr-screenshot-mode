@@ -8,9 +8,6 @@ import { spaceName, machineName, tabText } from "./privacy.js";
 import { turn, label as turnLabel, prune } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 
-// The header's height: a folded section is just this.
-const HEADER = 42;
-
 // Screenshot mode: the space name as shown (masked if hidden).
 const sn = (a) => { const w = spaces().find((x) => x.id === a.space); return w ? spaceName(w) : a.space_name; };
 
@@ -376,7 +373,7 @@ export default class Agents extends View {
     };
     // Folded to its header (never on the narrow rail, which has no header).
     const shut = folded() && !collapsed;
-    keepFolded("screenshot-agents", HEADER);
+    keepFolded("screenshot-agents");
     const urgent = list.reduce((m, a) => ((rankOf(a) ?? 0) > (RANK[m] ?? 0) ? Object.keys(RANK).find((k) => RANK[k] === rankOf(a)) : m), null);
     const rows = collapsed
       ? list.flatMap(withKids)
@@ -402,7 +399,7 @@ export default class Agents extends View {
             // The title folds the section; folded, it says how many and the most urgent state.
             .child(h_flex().id("ag-fold").gap(6).items_center().cursor_pointer().text_size(11.5).font_medium().text_color(t.dim)
               .hover((s) => s.text_color(t.foreground))
-              .on_click((_e, cx) => { toggleFold("screenshot-agents", HEADER); cx.notify(); })
+              .on_click((_e, cx) => { toggleFold("screenshot-agents"); cx.notify(); })
               .child("Agents")
               .when(shut, (el) => el.child(div().text_color(t.dim).child(String(list.length))))
               .when(shut && Boolean(urgent) && urgent !== "idle", (el) => el.child(this.status(t, { status: urgent }, true)))

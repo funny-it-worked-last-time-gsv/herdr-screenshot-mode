@@ -2,6 +2,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
 import { tabText } from "./privacy.js";
+import { spaceColor, tint } from "./colors.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -49,6 +50,8 @@ export default class Tabs extends View {
   render() {
     const t = theme();
     const space = spaces().find(p => p.active);
+    // The shown space's avatar color marks its selected tab.
+    const color = space && spaceColor(space.id, t);
     const shown = space?.tabs ?? [];
     const stop = (_e, cx) => cx.stop_propagation();
     const button = (id, label, action) => div().id(id).size(26).flex_none().flex().items_center().justify_center().rounded(6).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
@@ -57,7 +60,7 @@ export default class Tabs extends View {
       const program = panes().find(p => p.tab === c.id && p.program?.agent)?.program ?? panes().find(p => p.tab === c.id)?.program;
       const name = tabText(c.id, /^tb\d+$/.test(c.name) ? program?.name ?? "Terminal" : c.name, program?.name ?? `Tab ${i + 1}`);
       return h_flex().id(`tab-${c.id}`).h(29).px(10).gap(7).rounded(7).items_center().flex_none().text_size(12.8)
-        .border(1).border_color(c.active ? t.border : t.chrome).bg(c.active ? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
+        .border(1).border_color(c.active ? tint(color, "99") ?? t.border : t.chrome).bg(c.active ? tint(color, "2e") ?? t.raised : t.chrome).text_color(c.active ? t.foreground : t.muted)
         .hover(s => s.bg(t.hover))
         .on_mouse_down("left", (e, cx) => { cx.stop_propagation(); this.pressed = i; if (e.click_count === 2) run("tab.rename", { id: c.id }); })
         .on_mouse_up("left", () => {

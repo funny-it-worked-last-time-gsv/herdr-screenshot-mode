@@ -9,6 +9,7 @@ import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings
 import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
 import { turn, command, label as turnLabel } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
+import { spaceColor, tint } from "./colors.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -463,7 +464,8 @@ export default class Spaces extends View {
       .flex_none()
       .justify_center()
       .rounded(8)
-      .when(on, (el) => el.bg(t.selected))
+      // A wash in the space's color tells spaces apart; stronger on the shown one.
+      .bg(tint(spaceColor(w.id, t), on ? "38" : "10") ?? (on ? t.selected : t.chrome))
       .when(!on, (el) => el.hover((s) => s.bg(t.hover)))
       .when(this.pressed === i && this.over !== i, (el) => el.opacity(0.5))
       .when(this.pressed !== null && this.over === i && this.pressed !== i, (el) => el.child(
@@ -554,13 +556,15 @@ export default class Spaces extends View {
 
   // A space's tabs, each with its agents, each with its live sub-agents (depth first).
   children(w, t) {
+    const color = spaceColor(w.id, t);
+    const row = (o) => this.treeRow(t, { ...o, color });
     const ps = panes(), ags = agents(), all = terminals();
     const shown = new Map(ags.map((a) => [a.address, a.status]));
     const focused = ps.find((p) => p.focused)?.tab;
     const rows = [];
     const kids = (addr, depth) => all.filter((k) => k.parent === addr && k.state === "live").forEach((k) => {
       const st = shown.get(k.address) ?? k.status;
-      rows.push(this.treeRow(t, {
+      rows.push(row({
         id: `sub-${k.address}`, depth, pic: k.program, tab: null, time: turnLabel(turn(k.address, st)),
         text: k.name || k.template || k.program?.name || k.address,
         status: st === "error" ? "blocked" : st === "done" ? "idle" : st,
@@ -587,7 +591,7 @@ export default class Spaces extends View {
         const p = mine[0], a = p && ags.find((x) => x.pane === p.pane);
         const detail = p && detailOf(tab, p, a);
         const same = (x) => !x || [name, p?.program?.name].some((y) => y?.toLowerCase() === x.toLowerCase());
-        rows.push(this.treeRow(t, {
+        rows.push(row({
           id: `tab-${tab.id}`, depth: 0, tab: !p?.program?.icon, pic: p?.program, on: w.active && tab.id === focused,
           text: name, detail: same(detail) ? null : detail, time: p ? timeOf(p, a) : "", mono: !a && !same(detail), status: a ? a.status : tab.status,
           click: p ? () => run("pane.focus", { pane: p.pane }) : selectTab,
@@ -596,10 +600,10 @@ export default class Spaces extends View {
         continue;
       }
       // A split: the tab, then each pane under it.
-      rows.push(this.treeRow(t, { id: `tab-${tab.id}`, depth: 0, tab: true, on: w.active && tab.id === focused, text: name, status: tab.status, click: selectTab }));
+      rows.push(row({ id: `tab-${tab.id}`, depth: 0, tab: true, on: w.active && tab.id === focused, text: name, status: tab.status, click: selectTab }));
       for (const p of mine) {
         const a = ags.find((x) => x.pane === p.pane);
-        rows.push(this.treeRow(t, {
+        rows.push(row({
           id: `pane-${p.pane}`, depth: 1, pic: p.program, on: p.focused && w.active,
           text: detailOf(tab, p, a) || p.program?.name || "Terminal", mono: !a && !privacyOn() && Boolean(detailOf(tab, p, a)),
           status: a?.status, time: timeOf(p, a), click: () => run("pane.focus", { pane: p.pane }),
@@ -611,11 +615,11 @@ export default class Spaces extends View {
   }
 
   // One row in a space's tree, indented by depth under the space's name.
-  treeRow(t, { id, depth, pic, tab, text, detail, status, on, click, mono, time }) {
+  treeRow(t, { id, depth, pic, tab, text, detail, status, on, click, mono, time, color }) {
     const icon = !pic?.icon ? null : pic.tint ? svg(pic.icon).size(13).flex_none().text_color(t.muted) : image(pic.icon).w(13).h(13).flex_none();
     return h_flex().id(id).h(24).flex_none().pl(35 + depth * 14).pr(8).gap(7).items_center().rounded(6)
       .text_size(12).text_color(on ? t.foreground : t.muted)
-      .when(Boolean(on), el => el.bg(t.raised))
+      .bg(tint(color, on ? "30" : "0a") ?? (on ? t.raised : t.chrome))
       .hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_click(click)
       .when(Boolean(tab), el => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim)))

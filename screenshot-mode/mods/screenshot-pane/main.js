@@ -6,8 +6,9 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { panes, props, run, theme, home } from "herdr";
+import { panes, spaces, props, run, theme, home } from "herdr";
 import { tabText } from "./privacy.js";
+import { spaceColor, tint } from "./colors.js";
 
 function icon(p, size, color) {
   if (!p?.icon) return null;
@@ -49,15 +50,18 @@ export default class Pane extends View {
     const pic = icon(p.program, 14, t.dim);
     const st = p.status;
     const pane = p.pane;
+    // A wash of its space's avatar color, and an edge in it while focused.
+    const space = spaces().find((s) => s.tabs.some((c) => c.id === p.tab));
+    const color = space && spaceColor(space.id, t);
     return h_flex()
       .id(`pane-head-${pane}`)
       .size_full()
       .px(10)
       .gap(8)
       .items_center()
-      .bg(t.background)
+      .bg(tint(color, "14") ?? t.background)
       .border_b(1)
-      .border_color(t.border)
+      .border_color(p.focused ? tint(color, "b3") ?? t.border : t.border)
       .text_size(12)
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))

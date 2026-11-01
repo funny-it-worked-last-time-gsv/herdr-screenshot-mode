@@ -1,12 +1,10 @@
 // How long an agent's last turn ran and how long ago it ended, as "12 min / 3 min ago".
-// The core keeps only when a terminal's status last changed (status_ms), so the start
-// of a turn is remembered here when it is seen working (localStorage, per mod). A turn
-// that ran while the app was closed has no start: it shows "3 min ago" alone.
-import { terminals } from "herdr";
-
+// Timed from what this mod sees: a turn starts when the agent turns working and ends
+// when it stops. (The core's status_ms isn't kept current in terminals(), so it can't
+// be used.) Kept in localStorage per mod; an agent not yet seen working has no timing.
 let turns = null;
-const load = () => (turns ??= JSON.parse(localStorage.getItem("turns") ?? "{}"));
-const save = () => localStorage.setItem("turns", JSON.stringify(turns));
+const load = () => (turns ??= JSON.parse(localStorage.getItem("turn-times") ?? "{}"));
+const save = () => localStorage.setItem("turn-times", JSON.stringify(turns));
 
 export function span(ms) {
   const m = Math.floor(ms / 60000);
@@ -16,23 +14,15 @@ export function span(ms) {
   return h < 24 ? `${h} h` : `${Math.floor(h / 24)} d`;
 }
 
-// { working, ran, ago } in ms for an agent (any may be null), or null when unknown.
-export function turn(address, now = Date.now()) {
-  const k = terminals().find((x) => x.address === address);
-  const at = k?.status_ms;
-  if (!at) return null;
+// { working, ran, ago } in ms for an agent with this status now, or null when unknown.
+export function turn(address, status, now = Date.now()) {
   const all = load();
-  const state = k.status?.state ?? k.status;
-  const t = all[address];
-  if (state === "working") {
-    if (t?.start !== at) { all[address] = { start: at }; save(); }
-    return { working: now - at, ran: null, ago: null };
-  }
-  // The first look after it stopped fixes the end: looking at a done agent makes it
-  // idle, which moves status_ms again.
-  if (t?.start && !t.end) { t.end = at; save(); }
-  const end = t?.end ?? at;
-  return { working: null, ran: t?.end ? t.end - t.start : null, ago: now - end };
+  let t = all[address];
+  const working = status === "working";
+  if (working && !t?.working) { t = all[address] = { start: now, working: true }; save(); }
+  else if (!working && t?.working) { t.end = now; t.working = false; save(); }
+  if (!t) return null;
+  return t.working ? { working: now - t.start, ran: null, ago: null } : { working: null, ran: t.end - t.start, ago: now - t.end };
 }
 
 // A shell's last command, from the labels screenshot-mode/last-command.zsh sets.

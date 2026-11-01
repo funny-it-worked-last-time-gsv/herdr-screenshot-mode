@@ -329,7 +329,7 @@ export default class Agents extends View {
       const space = full ? sn(a) : null;
       const name = full ? more || space || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       const under = [space && space !== name ? space : null, machine ? machineName(machine) : null].filter(Boolean).join(" \u00b7 ");
-      const timing = turnLabel(turn(a.address, now)) || (when ? duration(now - when) : "");
+      const timing = turnLabel(turn(a.address, a.status, now)) || (when ? duration(now - when) : "");
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)

@@ -537,7 +537,7 @@ export default class Spaces extends View {
     const kids = (addr, depth) => all.filter((k) => k.parent === addr && k.state === "live").forEach((k) => {
       const st = shown.get(k.address) ?? k.status;
       rows.push(this.treeRow(t, {
-        id: `sub-${k.address}`, depth, pic: k.program, tab: null, time: turnLabel(turn(k.address)),
+        id: `sub-${k.address}`, depth, pic: k.program, tab: null, time: turnLabel(turn(k.address, st)),
         text: k.name || k.template || k.program?.name || k.address,
         status: st === "error" ? "blocked" : st === "done" ? "idle" : st,
         click: () => run("terminal.peek", { terminal: k.address }),
@@ -551,7 +551,7 @@ export default class Spaces extends View {
       if (a) return tabText(tab.id, (a.title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim(), null) || null;
       return privacyOn() ? null : all.find((k) => k.address === p.terminal)?.labels?.cmd || null;
     };
-    const timeOf = (p, a) => turnLabel(a ? turn(a.address) : command(all.find((k) => k.address === p.terminal)?.labels));
+    const timeOf = (p, a) => turnLabel(a ? turn(a.address, a.status) : command(all.find((k) => k.address === p.terminal)?.labels));
     for (const tab of w.tabs ?? []) {
       const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
       const lead = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];

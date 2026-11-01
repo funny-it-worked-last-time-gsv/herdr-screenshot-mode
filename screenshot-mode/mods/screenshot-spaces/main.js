@@ -511,8 +511,26 @@ export default class Spaces extends View {
   expanded(w) {
     // Spaces opened or closed by hand. Read here, not in init: a saved mod reloads without init.
     this.open ??= JSON.parse(localStorage.getItem("spaces.open") ?? "{}");
-    // Closed until someone opens it.
-    return this.open[w.id] ?? false;
+    // Closed until someone opens it, except the selected space (see reveal).
+    return this.open[w.id] ?? w.id === this.revealed;
+  }
+
+  // The selected tab's row is shown. The list can't be scrolled from code (only
+  // virtual lists can, and their rows can't take clicks), so when another space is
+  // selected it opens and every other space closes, hand-opened ones too, and its
+  // machine unfolds. Within a space, picking another tab changes nothing here.
+  reveal() {
+    const w = spaces().find((s) => s.active);
+    if (!w || w.id === this.revealed) return;
+    this.expanded(w);
+    this.revealed = w.id;
+    this.open = {};
+    localStorage.setItem("spaces.open", "{}");
+    const m = w.machine ?? null;
+    if (this.folded?.has(m)) {
+      this.folded.delete(m);
+      localStorage.setItem("machines.folded", JSON.stringify([...this.folded]));
+    }
   }
 
   // The fold chevron, always there: dim while closed.
@@ -648,6 +666,7 @@ export default class Spaces extends View {
       : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names.", "3. Click the pen to edit phrases that hide matching names automatically."];
     // Folded to its header (never on the narrow rail, which has no header).
     const shut = folded() && !collapsed;
+    this.reveal();
     keepFolded("screenshot-spaces");
     return v_flex().relative().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)

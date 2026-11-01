@@ -5,7 +5,7 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, machines, panes, agents, terminals, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
+import { spaces, machines, panes, agents, terminals, knownAgents, keys, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
 import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
 
 function find(node, id) {
@@ -42,6 +42,24 @@ export function glyph(status) {
   return status === "blocked" || status === "done" ? "●" : "·";
 }
 
+// A global key binding as people read it ("⌘T"), or "".
+function shortcut(name) {
+  const k = keys().find(b => b.section === "global" && b.action === name);
+  if (!k?.keys.trim()) return "";
+  const mac = window()?.platform === "macos";
+  const names = mac ? { ctrl: "⌃", alt: "⌥", shift: "⇧", cmd: "⌘", fn: "fn" } : { ctrl: "Ctrl", alt: "Alt", shift: "Shift", cmd: "Super", fn: "Fn" };
+  const alias = { secondary: mac ? "cmd" : "ctrl", super: "cmd", win: "cmd" };
+  return k.keys.trim().split(/\s+/).map(stroke => {
+    const parts = stroke.split("-");
+    let key = parts.pop();
+    if (key === "") { key = "-"; parts.pop(); }
+    const held = new Set(parts.map(m => alias[m.toLowerCase()] ?? m.toLowerCase()));
+    if (/^[A-Z]$/.test(key)) held.add("shift");
+    const label = key.length === 1 ? key.toUpperCase() : key[0].toUpperCase() + key.slice(1).toLowerCase();
+    return [...Object.keys(names).filter(m => held.has(m)).map(m => names[m]), label].join(mac ? "" : "+");
+  }).join(" ");
+}
+
 export function tone(t, status) {
   return t[status] ?? t.unknown;
 }
@@ -49,6 +67,7 @@ export function tone(t, status) {
 export default class Spaces extends View {
   init(_props, cx) {
     if (props()?.phrases) return this.initEditor(cx);
+    if (props()?.newMenu) return this.initNewMenu(cx);
     this.git = {}; // where() -> { name, branch, ahead, behind, repo, linked }, null: not a repo
     this.checked = {}; // where() -> when it was last looked at
     this.unsure = new Set(); // where()s git couldn't answer for (a machine away)
@@ -270,9 +289,66 @@ export default class Spaces extends View {
     });
   }
 
-  menu(w) {
-    // A popup is as tall as its items; height is only the most.
-    openOverlay({ mod: "menu", kind: "popup", width: 200, height: 260, props: { tab: "space", target: { id: w.id } } });
+  // The new menu (Terminal, agents, new space, worktrees) for space `w`. From a
+  // right-click it also has that space's own items: rename, remove worktree, close.
+  menu(w, own = true) {
+    const linked = Boolean(this.git[where(w, panes())]?.linked);
+    const remotes = this.targets().filter(Boolean);
+    openOverlay({ mod: "screenshot-spaces", kind: "popup", width: 250, height: 560, props: { newMenu: true, space: w.id, own, linked, remotes } });
+  }
+
+  // The menu itself (this mod opened as an overlay with { newMenu: true }).
+  initNewMenu(cx) {
+    this.agents = [];
+    this.handle = cx.focus_handle();
+    this.handle.focus();
+    const on = spaces().find(s => s.id === props().space)?.machine;
+    cx.spawn(async cx => {
+      try { this.agents = await knownAgents({ on }); } catch { this.failed = true; }
+      cx.notify();
+    });
+  }
+
+  newMenu() {
+    const t = theme();
+    const p = props();
+    const space = spaces().find(s => s.id === p.space);
+    const id = space?.id;
+    const done = () => closeOverlay(p.overlay);
+    const installed = this.agents.filter(a => a.installed);
+    const choices = [...installed, ...this.agents.filter(a => !a.installed).slice(0, 2)];
+    const folder = panes().find(x => x.focused && space?.tabs.some(c => c.id === x.tab))?.cwd;
+    const worktree = (action, width, height) => () => openOverlay({ mod: "worktree", kind: "dialog", width, height, props: { space: id, folder, action } });
+    const row = (key, icon, name, action, hint = "", enabled = true) => h_flex().id(key).h(31).px(9).gap(10).rounded(7).items_center().flex_none()
+      .text_color(enabled ? t.foreground : t.dim).when(enabled, el => el.hover(s => s.bg(t.selected)))
+      .on_click(() => { if (enabled) { done(); action(); } })
+      .child(icon).child(div().flex_1().min_w(0).truncate().child(name)).child(div().text_size(11).text_color(t.dim).child(hint));
+    const icon = (path) => svg(`mods/workspace-chrome/${path}.svg`).size(14).text_color(t.muted);
+    const line = () => div().h(1).mx(4).my(5).bg(t.border).flex_none();
+    const start = (a) => run("tab.new", { name: a.name, space: id, argv: a.run });
+    return v_flex().id("new-menu").track_focus(this.handle).w_full().min_h(0).bg(t.popover).p(5).text_size(12.8)
+      .on_key_down((e, cx) => {
+        if (e.key === "escape") { done(); return cx.stop_propagation(); }
+        if (e.modifiers.control || e.modifiers.platform || e.modifiers.alt) return;
+        const a = /^[1-9]$/.test(e.key) ? installed[Number(e.key) - 1] : null;
+        if (a) { done(); start(a); }
+      })
+      .when(p.own, el => el.child(div().px(9).pt(4).pb(4).text_size(11).text_color(t.dim).truncate().child(space ? spaceName(space) : "")))
+      .child(row("terminal", svg("icons/shell.svg").size(14), "Terminal", () => run("tab.new", { space: id }), shortcut("tab.new")))
+      .child(div().px(9).pt(8).pb(4).text_size(11).text_color(t.dim).child("Start an agent"))
+      .children(choices.map((a, i) => row(`agent-${a.key}`, a.tint ? svg(a.icon).size(14).text_color(t.foreground) : image(a.icon).size(14), a.name,
+        () => start(a), a.installed ? (i < 9 ? String(i + 1) : "") : "not installed", a.installed)))
+      .when(this.agents.length === 0, el => el.child(div().px(9).py(6).text_color(t.dim).child(this.failed ? "Could not load agents" : "Checking installed agents\u2026")))
+      .child(line())
+      .child(row("space", icon("plus"), "New space", () => run("space.new"), shortcut("space.new")))
+      .children(p.remotes.map(m => row(`space-${m}`, icon("server"), `New space on ${machineName(m)}`, () => run("space.new", { machine: m }))))
+      .child(row("worktree", icon("branch"), "New worktree\u2026", worktree("new", 460, 280), "", Boolean(space)))
+      .child(row("worktree-open", icon("branch"), "Open worktree\u2026", worktree("open", 560, 480), "", Boolean(space)))
+      .when(p.own && Boolean(space), el => el
+        .when(p.linked, el => el.child(row("worktree-remove", icon("branch"), "Remove worktree\u2026", worktree("remove", 440, 260))))
+        .child(line())
+        .child(row("rename", icon("square-pen"), "Rename", () => run("space.rename", { id })))
+        .child(row("close", icon("x"), "Close space", () => run("space.close", { id }))));
   }
 
   // Spaces in order, each worktree space moved under its main checkout's.
@@ -518,18 +594,9 @@ export default class Spaces extends View {
   targets() {
     return [null, ...this.machines.filter(m => m.state === "connected").map(m => m.name).sort()];
   }
-  chooser(t) {
-    const pick = (m) => { this.choosing = false; run("space.new", m ? { machine: m } : {}); };
-    return v_flex().id("space-where").mx(8).mb(6).p(4).gap(1).flex_none().rounded(7).bg(t.popover).border_1().border_color(t.border)
-      .child(div().px(8).pt(2).pb(4).text_size(11).text_color(t.dim).child("New space on"))
-      .children(this.targets().map(m => h_flex().id(`space-where-${m ?? "local"}`).h(28).px(8).gap(8).items_center().rounded(5)
-        .text_size(12.5).hover(s => s.bg(t.selected)).cursor_pointer()
-        .on_click(() => pick(m))
-        .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
-        .child(div().flex_1().truncate().child(m ? machineName(m) : "This computer"))));
-  }
   render() {
     if (props()?.phrases) return this.editor();
+    if (props()?.newMenu) return this.newMenu();
     const t = theme();
     const collapsed = narrow();
     const palette = ["ansi6", "ansi3", "ansi4", "ansi5", "ansi2", "ansi1"];
@@ -561,12 +628,8 @@ export default class Spaces extends View {
           .on_click((_e, cx) => { togglePrivacy(); cx.notify(); })
           .child(svg(`mods/screenshot-spaces/${privacyOn() ? "eye-off" : "eye"}.svg`).size(14)))
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
-          .on_click((_e, cx) => {
-            // Only ask where when there is somewhere else to go.
-            if (!this.targets().some(m => m)) return run("space.new");
-            this.choosing = !this.choosing; cx.notify();
-          }).child(svg("mods/workspace-chrome/plus.svg").size(14)))))
-      .when(this.choosing, el => el.child(this.chooser(t)))
+          .on_click(() => { const w = spaces().find(s => s.active); w ? this.menu(w, false) : run("space.new"); })
+          .child(svg("mods/workspace-chrome/plus.svg").size(14)))))
       .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
         .children(this.grouped(t, collapsed)))

@@ -7,6 +7,7 @@ import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
 import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
+import { turn, command, label as turnLabel } from "./timing.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -536,7 +537,7 @@ export default class Spaces extends View {
     const kids = (addr, depth) => all.filter((k) => k.parent === addr && k.state === "live").forEach((k) => {
       const st = shown.get(k.address) ?? k.status;
       rows.push(this.treeRow(t, {
-        id: `sub-${k.address}`, depth, pic: k.program, tab: null,
+        id: `sub-${k.address}`, depth, pic: k.program, tab: null, time: turnLabel(turn(k.address)),
         text: k.name || k.template || k.program?.name || k.address,
         status: st === "error" ? "blocked" : st === "done" ? "idle" : st,
         click: () => run("terminal.peek", { terminal: k.address }),
@@ -550,6 +551,7 @@ export default class Spaces extends View {
       if (a) return tabText(tab.id, (a.title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim(), null) || null;
       return privacyOn() ? null : all.find((k) => k.address === p.terminal)?.labels?.cmd || null;
     };
+    const timeOf = (p, a) => turnLabel(a ? turn(a.address) : command(all.find((k) => k.address === p.terminal)?.labels));
     for (const tab of w.tabs ?? []) {
       const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
       const lead = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];
@@ -563,7 +565,7 @@ export default class Spaces extends View {
         const same = (x) => !x || [name, p?.program?.name].some((y) => y?.toLowerCase() === x.toLowerCase());
         rows.push(this.treeRow(t, {
           id: `tab-${tab.id}`, depth: 0, tab: !p?.program?.icon, pic: p?.program, on: w.active && tab.id === focused,
-          text: name, detail: same(detail) ? null : detail, mono: !a && !same(detail), status: a ? a.status : tab.status,
+          text: name, detail: same(detail) ? null : detail, time: p ? timeOf(p, a) : "", mono: !a && !same(detail), status: a ? a.status : tab.status,
           click: p ? () => run("pane.focus", { pane: p.pane }) : selectTab,
         }));
         if (a) kids(a.address, 1);
@@ -576,7 +578,7 @@ export default class Spaces extends View {
         rows.push(this.treeRow(t, {
           id: `pane-${p.pane}`, depth: 1, pic: p.program, on: p.focused && w.active,
           text: detailOf(tab, p, a) || p.program?.name || "Terminal", mono: !a && !privacyOn() && Boolean(detailOf(tab, p, a)),
-          status: a?.status, click: () => run("pane.focus", { pane: p.pane }),
+          status: a?.status, time: timeOf(p, a), click: () => run("pane.focus", { pane: p.pane }),
         }));
         if (a) kids(a.address, 2);
       }
@@ -585,7 +587,7 @@ export default class Spaces extends View {
   }
 
   // One row in a space's tree, indented by depth under the space's name.
-  treeRow(t, { id, depth, pic, tab, text, detail, status, on, click, mono }) {
+  treeRow(t, { id, depth, pic, tab, text, detail, status, on, click, mono, time }) {
     const icon = !pic?.icon ? null : pic.tint ? svg(pic.icon).size(13).flex_none().text_color(t.muted) : image(pic.icon).w(13).h(13).flex_none();
     return h_flex().id(id).h(24).flex_none().pl(35 + depth * 14).pr(8).gap(7).items_center().rounded(6)
       .text_size(12).text_color(on ? t.foreground : t.muted)
@@ -598,6 +600,7 @@ export default class Spaces extends View {
       .when(Boolean(detail), el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
         .child(div().flex_shrink(0).max_w(140).truncate().child(text))
         .child(div().flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(`\u00b7 ${detail}`))))
+      .when(Boolean(time), el => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(time)))
       .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(status === "blocked" || status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(tone(t, status))));
   }

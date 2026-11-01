@@ -5,6 +5,7 @@ import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, openOverlay, closeOverlay, props, window, layout } from "herdr";
 import { spaceName, machineName, tabText } from "./privacy.js";
+import { turn, label as turnLabel, prune } from "./timing.js";
 
 // Screenshot mode: the space name as shown (masked if hidden).
 const sn = (a) => { const w = spaces().find((x) => x.id === a.space); return w ? spaceName(w) : a.space_name; };
@@ -228,6 +229,7 @@ export default class Agents extends View {
     const rankOf = (a) => urgency.get(a.address);
     if (byPriority) list = [...list].sort((x, y) => rankOf(y) - rankOf(x) || this.since(y) - this.since(x) || y.seq - x.seq);
     this.prunePins(all);
+    prune(new Set(all.map((k) => k.address)), now);
     const pinned = this.pins.map((p) => list.find((a) => a.address === p)).filter(Boolean);
     const rest = list.filter((a) => !this.pins.includes(a.address));
     list = [...pinned, ...rest];
@@ -321,16 +323,17 @@ export default class Agents extends View {
         })
         .child(svg(`mods/workspace-chrome/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
-      // Without a space header above (priority, pinned) the row names its space.
-      // Those rows lead with the tab and follow with the space: "tab · space".
+      // Without a space header above (priority, pinned) the row names its space, on a second,
+      // smaller line with the machine: the first line keeps room for the tab and the timing.
       const full = byPriority || isPinned;
-      const space = sn(a);
-      const after = full && more && space ? space : null;
+      const space = full ? sn(a) : null;
       const name = full ? more || space || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const under = [space && space !== name ? space : null, machine ? machineName(machine) : null].filter(Boolean).join(" \u00b7 ");
+      const timing = turnLabel(turn(a.address, now)) || (when ? duration(now - when) : "");
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(30)
+        .h(under ? 40 : 30)
         .flex_none()
         .rounded(8)
         .items_center()
@@ -350,13 +353,12 @@ export default class Agents extends View {
             this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
             cx.notify();
           })).child(pic)))
-        .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(after ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(Boolean(after), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${after}`))))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machineName(machine))))
+        .child(v_flex().flex_1().min_w(0).gap(1)
+          .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+          .when(Boolean(under), el => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(under))))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
-        .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))
+        .when(this.hovered !== a.address && Boolean(timing), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(timing)))
         .child(this.status(t, a, byPriority && !isPinned));
     };
 

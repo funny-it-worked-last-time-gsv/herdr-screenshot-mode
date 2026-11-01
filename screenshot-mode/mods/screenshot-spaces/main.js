@@ -517,15 +517,18 @@ export default class Spaces extends View {
 
   // The selected tab's row is shown. The list can't be scrolled from code (only
   // virtual lists can, and their rows can't take clicks), so when another space is
-  // selected it opens and every other space closes, hand-opened ones too, and its
-  // machine unfolds. Within a space, picking another tab changes nothing here.
+  // selected it opens and every other space closes, hand-opened ones too. Selecting
+  // any tab also opens its space if it was closed, and unfolds its machine.
   reveal() {
     const w = spaces().find((s) => s.active);
-    if (!w || w.id === this.revealed) return;
+    const tab = w?.tabs.find((c) => c.active)?.id;
+    if (!w || (w.id === this.revealed && tab === this.lastTab)) return;
     this.expanded(w);
+    if (w.id !== this.revealed) this.open = {};
+    else delete this.open[w.id];
     this.revealed = w.id;
-    this.open = {};
-    localStorage.setItem("spaces.open", "{}");
+    this.lastTab = tab;
+    localStorage.setItem("spaces.open", JSON.stringify(this.open));
     const m = w.machine ?? null;
     if (this.folded?.has(m)) {
       this.folded.delete(m);

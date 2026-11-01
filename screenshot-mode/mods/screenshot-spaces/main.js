@@ -30,7 +30,7 @@ function place(s, ps) {
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
 // Dense: tighter rows and no tabs listed under spaces.
-const rowHeight = ({ tree }) => (dense() ? 24 : tree ? 28 : 30);
+const rowHeight = ({ tree, two }) => (dense() ? 24 : two ? 44 : tree ? 28 : 30);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -434,19 +434,22 @@ export default class Spaces extends View {
   // Only what's unusual, after the name: "herdr \u00b7 spike \u21912 \u21931". The repo or
   // branch goes when the name already says it (a worktree is named after its branch),
   // and master/main go: nearly every space is on one.
-  gitTail(g, tree, name, t) {
+  // `under`: on its own line below the name, left-aligned and smaller. Null when
+  // there is nothing unusual to say.
+  gitTail(g, tree, name, t, under = false) {
     const raw = g.branch ?? "detached";
     const same = (a) => a.toLowerCase() === name.toLowerCase();
     const branch = same(raw) || raw === "master" || raw === "main" ? "" : raw;
     const repo = tree || same(g.name) ? "" : g.name;
     const where = [repo, branch].filter(Boolean).join(" \u00b7 ");
+    if (!where && !g.ahead && !g.behind) return null;
     return h_flex()
       .flex_1()
       .min_w(0)
       .gap(5)
-      .justify_end()
+      .when(!under, (el) => el.justify_end())
       .items_center()
-      .text_size(11.5)
+      .text_size(under ? 11 : 11.5)
       .text_color(t.dim)
       .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
@@ -462,6 +465,7 @@ export default class Spaces extends View {
       const gn = spaceText(w, g.name, null), gb = g.branch ? spaceText(w, g.branch, null) : g.branch;
       g = gn === null || gb === null ? null : { ...g, name: gn, branch: gb };
     }
+    const tail = g && !dense() ? this.gitTail(g, tree, name, t, true) : null;
     const colors = shared("space.colors") ?? {};
     const color = colors[w.id] ?? "ansi6";
     const fill = color.startsWith("#") ? color : (MARK[color] ?? t[color]);
@@ -470,7 +474,7 @@ export default class Spaces extends View {
       .id(`space-${w.id}`)
       .on_hover(this.hovering(`space-${w.id}`))
       .px(8)
-      .h(rowHeight({ tree }))
+      .h(rowHeight({ tree, two: Boolean(tail) }))
       .flex_none()
       .justify_center()
       .rounded(8)
@@ -511,11 +515,15 @@ export default class Spaces extends View {
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(masked ? "•" : [...w.name][0]?.toUpperCase() ?? "?")))
-          .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
-          .child(g ? this.gitTail(g, tree, name, t) : div().flex_1())
+          .when(Boolean(tail), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(name)))
+          .when(!tail, el => el
+            .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
+            .child((g && !dense() ? null : g && this.gitTail(g, tree, name, t)) || div().flex_1()))
           .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; })
           .when(true, el => { const c = this.chevron(w, t); return c ? el.child(c) : el; }),
-      );
+      )
+      // Repo, branch and ahead/behind on a smaller line under the name (dense keeps one line).
+      .when(Boolean(tail), el => el.child(h_flex().pl(tree ? 44 : 27).min_w(0).child(tail)));
   }
 
   // Whether a space lists its tabs, agents and sub-agents under it.

@@ -5,8 +5,8 @@
 
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, machines, panes, agents, terminals, knownAgents, keys, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
+import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText, tabMasked, matches, aliased } from "./privacy.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -561,12 +561,24 @@ export default class Spaces extends View {
         }));
         kids(a.address, 2);
       }
+      // Shells and other programs: the last command they ran (the `cmd` label
+      // screenshot-mode/last-command.zsh sets), else nothing to add.
+      for (const p of mine.filter((p) => !p.program?.agent)) {
+        const cmd = all.find((k) => k.address === p.terminal)?.labels?.cmd;
+        if (!cmd) continue;
+        const hide = tabMasked(tab.id) || (privacyOn() && matches(cmd));
+        rows.push(this.treeRow(t, {
+          id: `cmd-${p.pane}`, depth: 1, pic: p.program, on: p.focused && w.active, mono: true,
+          text: hide ? aliased(cmd) ?? p.program?.name ?? "Terminal" : cmd,
+          click: () => run("pane.focus", { pane: p.pane }),
+        }));
+      }
     }
     return rows;
   }
 
   // One row in a space's tree, indented by depth under the space's name.
-  treeRow(t, { id, depth, pic, tab, text, status, on, click }) {
+  treeRow(t, { id, depth, pic, tab, text, status, on, click, mono }) {
     const icon = !pic?.icon ? null : pic.tint ? svg(pic.icon).size(13).flex_none().text_color(t.muted) : image(pic.icon).w(13).h(13).flex_none();
     return h_flex().id(id).h(24).flex_none().pl(35 + depth * 14).pr(8).gap(7).items_center().rounded(6)
       .text_size(12).text_color(on ? t.foreground : t.muted)
@@ -575,7 +587,7 @@ export default class Spaces extends View {
       .on_click(click)
       .when(Boolean(tab), el => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim)))
       .when(Boolean(icon), el => el.child(icon))
-      .child(div().flex_1().min_w(0).truncate().child(text))
+      .child(div().flex_1().min_w(0).truncate().when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(text))
       .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(status === "blocked" || status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(tone(t, status))));
   }

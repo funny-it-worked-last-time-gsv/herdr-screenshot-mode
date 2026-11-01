@@ -8,6 +8,8 @@ Hover a space or machine in the Spaces sidebar and click its eye to mark it. Or 
 
 ![Hide phrases dialog](screenshot-mode/phrases.png) Then press Cmd+Shift+H, or click the eye next to "Spaces", to turn screenshot mode on. Hidden spaces without an alias show as "Space N" and hidden machines as "Machine N" everywhere: the sidebar, tab bar, agents list, pane headers and status bar. Press Cmd+Shift+H again to get the real names back. Hover the eye next to "Spaces" for a reminder.
 
+The Spaces list can also show each terminal's last command. Add [screenshot-mode/last-command.zsh](screenshot-mode/last-command.zsh) to your `~/.zshrc` for that.
+
 It can't hide what your terminals print (shell prompts, paths in output). See [screenshot-mode/RECIPE.md](screenshot-mode/RECIPE.md) for the details and how it is built.
 
 ## Installation

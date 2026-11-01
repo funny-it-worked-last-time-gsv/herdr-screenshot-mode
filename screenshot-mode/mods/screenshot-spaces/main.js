@@ -3,10 +3,10 @@
 // its first terminal is in now, only where unusual: branch, ahead/behind. Agent state lives in the agents list, not here. Click to
 // switch, right-click for its menu, drag to reorder.
 
-import { View, div, svg } from "gpui-kit";
+import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { spaces, machines, panes, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText } from "./privacy.js";
+import { spaces, machines, panes, agents, terminals, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -65,6 +65,8 @@ export default class Spaces extends View {
     this.over = null;
     this.machines = [];
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
+    // Spaces opened or closed by hand (their tabs, agents and sub-agents listed under them).
+    this.open = JSON.parse(localStorage.getItem("spaces.open") ?? "{}");
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -299,7 +301,7 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : this.row(r, t));
+    const draw = (r) => (collapsed ? this.compact(r, t) : [this.row(r, t), ...(this.expanded(r.w) ? this.children(r.w, t) : [])]);
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -307,7 +309,7 @@ export default class Spaces extends View {
         || spaces().some(s => (s.machine ?? null) === m && !this.shown.has(s.id));
     };
     const loadingRow = m => div().id(`machine-loading-${m ?? "local"}`).h(28).flex_none().px(8).text_size(12).text_color(t.dim).child(collapsed ? "…" : "Loading…");
-    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.map(draw);
+    if (!remote.length) return loading(null) && !rows.length ? [loadingRow(null)] : rows.flatMap(draw);
     const machineNames = [null, ...remote];
     return machineNames.flatMap((m) => {
       const mine = rows.filter((r) => (r.w.machine ?? null) === m);
@@ -333,7 +335,7 @@ export default class Spaces extends View {
         .text_size(12).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
         .on_click(() => run("space.new", m ? { machine: m } : {}))
         .child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));
-      return [head, ...(folded ? [] : mine.length ? mine.map(draw) : [loading(m) ? loadingRow(m) : empty])];
+      return [head, ...(folded ? [] : mine.length ? mine.flatMap(draw) : [loading(m) ? loadingRow(m) : empty])];
     });
   }
 
@@ -418,8 +420,85 @@ export default class Spaces extends View {
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(masked ? "•" : [...w.name][0]?.toUpperCase() ?? "?")))
           .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
           .child(g ? this.gitTail(g, tree, name, t) : div().flex_1())
-          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; }),
+          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; })
+          .when(true, el => { const c = this.chevron(w, t); return c ? el.child(c) : el; }),
       );
+  }
+
+  // Whether a space lists its tabs, agents and sub-agents under it.
+  // `this.open[w.id]` is true or false once someone clicked its chevron, else undefined.
+  expanded(w) {
+    // Closed until someone opens it.
+    return this.open[w.id] ?? false;
+  }
+
+  // The fold chevron: on hover, and always while open.
+  chevron(w, t) {
+    const open = this.expanded(w);
+    if (!open && this.hoverRow !== `space-${w.id}`) return null;
+    return div().id(`space-fold-${w.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
+      .hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        this.open[w.id] = !open;
+        localStorage.setItem("spaces.open", JSON.stringify(this.open));
+        cx.notify();
+      })
+      .child(svg(`mods/workspace-chrome/chevron-${open ? "down" : "right"}.svg`).size(11));
+  }
+
+  // A space's tabs, each with its agents, each with its live sub-agents (depth first).
+  children(w, t) {
+    const ps = panes(), ags = agents(), all = terminals();
+    const shown = new Map(ags.map((a) => [a.address, a.status]));
+    const focused = ps.find((p) => p.focused)?.tab;
+    const rows = [];
+    const kids = (addr, depth) => all.filter((k) => k.parent === addr && k.state === "live").forEach((k) => {
+      const st = shown.get(k.address) ?? k.status;
+      rows.push(this.treeRow(t, {
+        id: `sub-${k.address}`, depth, pic: k.program, tab: null,
+        text: k.name || k.template || k.program?.name || k.address,
+        status: st === "error" ? "blocked" : st === "done" ? "idle" : st,
+        click: () => run("terminal.peek", { terminal: k.address }),
+      }));
+      kids(k.address, depth + 1);
+    });
+    for (const tab of w.tabs ?? []) {
+      const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
+      const lead = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];
+      const real = tab.named ? tab.name : lead?.program?.name || `Tab ${tab.index}`;
+      rows.push(this.treeRow(t, {
+        id: `tab-${tab.id}`, depth: 0, tab, on: w.active && tab.id === focused,
+        text: tabText(tab.id, real, `Tab ${tab.index}`), status: tab.status,
+        click: () => { if (!w.active) run("space.select", { id: w.id }); run("tab.select", { id: tab.id }); },
+      }));
+      for (const a of ags.filter((a) => a.tab === tab.id)) {
+        rows.push(this.treeRow(t, {
+          id: `agent-${a.address}`, depth: 1, pic: a.program, on: a.focused,
+          text: tabText(tab.id, (a.title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || a.program?.name || "Agent", a.program?.name || "Agent"),
+          status: a.status,
+          click: () => run("pane.focus", { pane: a.pane }),
+        }));
+        kids(a.address, 2);
+      }
+    }
+    return rows;
+  }
+
+  // One row in a space's tree, indented by depth under the space's name.
+  treeRow(t, { id, depth, pic, tab, text, status, on, click }) {
+    const icon = !pic?.icon ? null : pic.tint ? svg(pic.icon).size(13).flex_none().text_color(t.muted) : image(pic.icon).w(13).h(13).flex_none();
+    return h_flex().id(id).h(24).flex_none().pl(35 + depth * 14).pr(8).gap(7).items_center().rounded(6)
+      .text_size(12).text_color(on ? t.foreground : t.muted)
+      .when(Boolean(on), el => el.bg(t.raised))
+      .hover(s => s.bg(t.hover).text_color(t.foreground))
+      .on_click(click)
+      .when(Boolean(tab), el => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim)))
+      .when(Boolean(icon), el => el.child(icon))
+      .child(div().flex_1().min_w(0).truncate().child(text))
+      .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
+      .when(status === "blocked" || status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(tone(t, status))));
   }
 
   compact({ w, i }, t) {

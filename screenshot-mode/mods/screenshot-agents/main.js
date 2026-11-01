@@ -266,7 +266,7 @@ export default class Agents extends View {
         .when(!open, (el) => el.child(String(subs.length)));
     };
 
-    // A row reads "space \u00b7 detail": the detail is a tab someone named or the
+    // A row reads "detail \u00b7 space": the detail is a tab someone named or the
     // agent's own title, never an automatic tab number unless two rows would
     // otherwise read the same.
     const tabs = spaces().flatMap(s => s.tabs);
@@ -322,8 +322,11 @@ export default class Agents extends View {
         .child(svg(`mods/workspace-chrome/${isPinned ? "pin-off" : "pin"}.svg`).size(13));
       // Under a space header the space goes without saying; an automatic tab number says nothing.
       // Without a space header above (priority, pinned) the row names its space.
+      // Those rows lead with the tab and follow with the space: "tab · space".
       const full = byPriority || isPinned;
-      const name = full ? sn(a) || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
+      const space = sn(a);
+      const after = full && more && space ? space : null;
+      const name = full ? more || space || label(a) : more ?? (/^\d+$/.test(label(a)) ? a.program?.name || label(a) : label(a));
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
@@ -348,8 +351,8 @@ export default class Agents extends View {
             cx.notify();
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
+          .child(div().min_w(0).max_w(after ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+          .when(Boolean(after), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${after}`))))
         .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machineName(machine))))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))

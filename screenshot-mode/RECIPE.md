@@ -16,7 +16,8 @@ A switch in the Spaces sidebar that hides the names of chosen spaces and machine
 - **Masked space row.** Without an alias, the name becomes "Space N" (N is the space's 1-based position in `spaces()`). The avatar keeps its color but shows "•" instead of the first letter. The repo, branch and ahead/behind tail is dropped.
 - **Masked machine.** The header, the "New space on" chooser and the agents list show "Machine N". N is the 1-based position of that name among marked machines, sorted by name. "This computer" is never masked.
 - **Tab bar.** A masked tab (its space is masked, or its name or any of its terminals' title, folder or branch matches a phrase) shows its program's name ("Claude Code", "zsh"), or "Tab N" when there is no program.
-- **Agents list.** Agents in a masked space show the masked space name, and the program name instead of the tab name or title. Group headers use the masked space name. The machine tag on remote agents is masked.
+- **Agents list.** Agents in a masked space show the masked space name, and the program name instead of the tab name or title. Group headers use the masked space name. In the Priority view and under Pinned a row reads "tab · space". The machine tag on remote agents is masked.
+- **Space tree.** A chevron on a space row (on hover, and always while open) lists its tabs under it, each tab's agents, and each agent's live sub-agents. Spaces start closed and remember being opened. Tab and agent rows go through the same tab masking as the tab bar. Clicking a tab selects it, an agent focuses its pane, and a sub-agent opens in peek.
 - **Pane header.** In a masked space the terminal title falls back to the program name and the folder text is blank.
 - **Status bar.** A masked machine shows as "Machine N". The branch is hidden when the active space is masked or the branch matches a phrase.
 - **Repo and branch tail.** In the Spaces list it is also dropped when the repo or branch matches a phrase.
@@ -61,7 +62,7 @@ Five clones of Herdr 0.1.10's shipped mods, each with the same `privacy.js` help
 - `mod.clone` rewrites `mods/<name>/…` asset paths. When renaming a clone, rewrite them too: `mods/screenshot-tabs/win-*.svg`, `mods/screenshot-pane/*.svg`, `mods/screenshot-spaces/eye*.svg`, and the agents sort popup's `openOverlay({ mod: "screenshot-agents" })`.
 - A dialog sizes to its content, so a `flex_1().min_h(0)` list inside it collapses to nothing. A scrolling list with only `max_h(220)` grows to the full 220px and pushes Done out of the dialog. Give it an explicit height: `h(Math.min(Math.max(count, 1) * 30, 220))`.
 - Saving a mod reloads it in place without re-running `init`. A flag set there won't show until the next start.
-- It cannot mask what a terminal prints (shell prompts with user and host, paths in output), the Cmd+P picker, the Files and Changes panels, menus or other mods. Sub-agent rows in the agents list keep their own names.
+- It cannot mask what a terminal prints (shell prompts with user and host, paths in output), the Cmd+P picker, the Files and Changes panels, menus or other mods. Sub-agent rows in the agents list and the space tree keep their own names.
 - The key is `cmd-` (macOS). On Linux or Windows bind `ctrl-shift-h` or similar instead. The help text says Cmd+Shift+H either way.
 - These are clones of Herdr 0.1.10's mods. On a later Herdr, a fresh build from this recipe on top of new clones is safer than copying the files.
 - To use it, point your own (cloned) layout's blocks at the five mods. The installer has to do this, since the mod ships no layout.

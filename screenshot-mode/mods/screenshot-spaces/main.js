@@ -298,7 +298,7 @@ export default class Spaces extends View {
   menu(w, own = true) {
     const linked = Boolean(this.git[where(w, panes())]?.linked);
     const remotes = this.targets().filter(Boolean);
-    openOverlay({ mod: "screenshot-spaces", kind: "popup", width: 250, height: 560, props: { newMenu: true, space: w.id, own, linked, remotes } });
+    openOverlay({ mod: "screenshot-spaces", kind: "popup", width: 250, height: 620, props: { newMenu: true, space: w.id, own, linked, remotes } });
   }
 
   // The menu itself (this mod opened as an overlay with { newMenu: true }).
@@ -340,11 +340,21 @@ export default class Spaces extends View {
       .when(p.own && Boolean(space), el => el
         .child(div().px(9).pt(4).pb(4).text_size(11).text_color(t.dim).truncate().child(spaceName(space)))
         .child(row("rename", icon("square-pen"), "Rename", () => run("space.rename", { id })))
+        // The space's color: shared "space.colors", read by every mod that draws spaces.
+        // The menu stays open so colors can be tried.
+        .child(h_flex().h(30).px(9).gap(8).items_center().flex_none()
+          .children(Object.entries(MARK).map(([name, hex]) => {
+            const on = ((shared("space.colors") ?? {})[id] ?? "ansi6") === name;
+            return div().id(`color-${name}`).size(18).flex_none().rounded(9).cursor_pointer().bg(hex)
+              .border(2).border_color(on ? t.foreground : t.popover)
+              .hover(s => s.border_color(t.muted))
+              .on_click((_e, cx) => { setShared("space.colors", { ...(shared("space.colors") ?? {}), [id]: name }); cx.notify(); });
+          })))
         .child(line()))
       .child(row("terminal", svg("icons/shell.svg").size(14), "Terminal", () => run("tab.new", { space: id }), shortcut("tab.new")))
       .child(div().px(9).pt(8).pb(4).text_size(11).text_color(t.dim).child("Start an agent"))
-      // At most 8 rows, then it scrolls: a long agent list must not push the space's items out of the popup.
-      .child(v_flex().id("agent-list").flex_none().h(Math.min(choices.length, 8) * 31).overflow_y_scrollbar()
+      // At most 8 rows (6 with the space's own items), then it scrolls: a long agent list must not push the space's items out of the popup.
+      .child(v_flex().id("agent-list").flex_none().h(Math.min(choices.length, p.own ? 6 : 8) * 31).overflow_y_scrollbar()
         .children(choices.map((a, i) => row(`agent-${a.key}`, a.tint ? svg(a.icon).size(14).text_color(t.foreground) : image(a.icon).size(14), a.name,
           () => start(a), a.installed ? (i < 9 ? String(i + 1) : "") : "not installed", a.installed))))
       .when(this.agents.length === 0, el => el.child(div().px(9).py(6).text_color(t.dim).child(this.failed ? "Could not load agents" : "Checking installed agents\u2026")))

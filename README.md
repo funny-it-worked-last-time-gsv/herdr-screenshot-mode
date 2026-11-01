@@ -22,5 +22,6 @@ Ask your agent to add this mod (it reads every file first), or by hand:
    `spaces` → `screenshot-spaces`, `agents` → `screenshot-agents`, `tabs` → `screenshot-tabs`,
    `workspace-status` → `screenshot-status`, and the pane header's `pane` → `screenshot-pane`.
    Skip any block your layout doesn't have.
+4. Optional: so the Spaces and Agents sections can fold to their headers, set the `min` of those two blocks in your layout to `31` and `42`.
 
 The mods are clones of Herdr 0.1.10's shipped `spaces`, `agents`, `tabs`, `workspace-status` and `pane`, with masking added. They run only what those already run (`git` for the Spaces list, `hc machine ls`), make no network requests and read no files outside their folders. Delete the folders and switch your layout back to remove it.

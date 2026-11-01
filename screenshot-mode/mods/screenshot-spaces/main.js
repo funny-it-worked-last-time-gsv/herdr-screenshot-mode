@@ -8,6 +8,10 @@ import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
 import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
 import { turn, command, label as turnLabel } from "./timing.js";
+import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
+
+// The header's height: a folded section is just this.
+const HEADER = 31;
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -27,7 +31,8 @@ function place(s, ps) {
   const tabs = new Set((s.tabs ?? []).map((c) => c.id));
   return ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd || s.folder;
 }
-const rowHeight = ({ tree }) => (tree ? 28 : 30);
+// Dense: tighter rows and no tabs listed under spaces.
+const rowHeight = ({ tree }) => (dense() ? 24 : tree ? 28 : 30);
 const where = (s, ps) => JSON.stringify([s.machine ?? null, place(s, ps)]);
 const base = (path) => path.replace(/\/+$/, "").split("/").pop();
 // Changes made outside Herdr (an editor's save, a commit in another app): looked
@@ -380,7 +385,7 @@ export default class Spaces extends View {
   // The rows, under a header per machine once one isn't this computer.
   grouped(t, collapsed) {
     const rows = this.ordered();
-    const draw = (r) => (collapsed ? this.compact(r, t) : [this.row(r, t), ...(this.expanded(r.w) ? this.children(r.w, t) : [])]);
+    const draw = (r) => (collapsed ? this.compact(r, t) : [this.row(r, t), ...(this.expanded(r.w) && !dense() ? this.children(r.w, t) : [])]);
     const remote = [...new Set([...rows.map(r => r.w.machine).filter(Boolean), ...this.machines.map(m => m.name)])].sort();
     const loading = m => {
       const layout = machines().find(k => k.name === m)?.layout;
@@ -515,6 +520,7 @@ export default class Spaces extends View {
 
   // The fold chevron, always there: dim while closed.
   chevron(w, t) {
+    if (dense()) return null;
     const open = this.expanded(w);
     return div().id(`space-fold-${w.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
       .hover(s => s.bg(t.hover).text_color(t.foreground))
@@ -643,10 +649,24 @@ export default class Spaces extends View {
     const tip = privacyOn()
       ? ["Screenshot mode is ON", "Marked spaces and machines show as \"Space N\" / \"Machine N\".", "Click the eye or press Cmd+Shift+H to turn it off.", "Click the pen to edit the hide phrases."]
       : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names.", "3. Click the pen to edit phrases that hide matching names automatically."];
+    // Folded to its header (never on the narrow rail, which has no header).
+    const shut = folded() && !collapsed;
+    keepFolded("screenshot-spaces", HEADER);
     return v_flex().relative().size_full().min_h(0).bg(t.chrome).text_size(13)
       .child(h_flex().h(31).pl(16).pr(10).items_center().justify_between().text_size(11.5).text_color(t.dim)
-        .when(!collapsed, el => el.child(privacyOn() ? "Spaces · screenshot mode" : "Spaces"))
+        // The title folds the section.
+        .when(!collapsed, el => el.child(h_flex().id("spaces-fold").gap(6).items_center().cursor_pointer()
+          .hover(s => s.text_color(t.foreground))
+          .on_click((_e, cx) => { toggleFold("screenshot-spaces", HEADER); cx.notify(); })
+          .child(privacyOn() ? "Spaces · screenshot mode" : "Spaces")
+          .when(shut, el => el.child(div().child(String(spaces().length))))
+          .child(svg(`mods/workspace-chrome/chevron-${shut ? "right" : "down"}.svg`).size(11).flex_none())))
         .child(h_flex().gap(2).items_center()
+        .child(div().id("spaces-dense").size(26).flex_none().flex().items_center().justify_center().rounded(6)
+          .text_color(dense() ? t.accent : t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip(dense() ? "Roomier rows" : "Denser rows")
+          .on_click((_e, cx) => { toggleDense(); cx.notify(); })
+          .child(svg("mods/screenshot-spaces/list.svg").size(13)))
         .child(div().id("phrases-edit").size(26).flex_none().flex().items_center().justify_center().rounded(6)
           .text_color(phrases().length ? t.accent : t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => this.openEditor())
@@ -659,9 +679,9 @@ export default class Spaces extends View {
         .child(div().id("space-new").size(26).flex_none().flex().items_center().justify_center().rounded(6).hover(s => s.bg(t.hover).text_color(t.foreground))
           .on_click(() => { const w = spaces().find(s => s.active); w ? this.menu(w, false) : run("space.new"); })
           .child(svg("mods/workspace-chrome/plus.svg").size(14)))))
-      .child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
+      .when(!shut, el => el.child(v_flex().flex_1().min_h(0).px(8).pb(14).overflow_y_scrollbar().mode("always")
         .on_mouse_up("left", (_e, cx) => { this.pressed = null; cx.notify(); })
-        .children(this.grouped(t, collapsed)))
+        .children(this.grouped(t, collapsed))))
       .when(Boolean(this.tip), el => el.child(v_flex().absolute().top(31).left(8).right(8).p(10).gap(4).rounded(8)
         .bg(t.popover).border_1().border_color(t.border).text_size(12).text_color(t.muted)
         .child(div().font_semibold().text_color(t.foreground).child(tip[0]))

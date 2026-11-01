@@ -6,6 +6,10 @@ import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, window, layout } from "herdr";
 import { spaceName, machineName, tabText } from "./privacy.js";
 import { turn, label as turnLabel, prune } from "./timing.js";
+import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
+
+// The header's height: a folded section is just this.
+const HEADER = 42;
 
 // Screenshot mode: the space name as shown (masked if hidden).
 const sn = (a) => { const w = spaces().find((x) => x.id === a.space); return w ? spaceName(w) : a.space_name; };
@@ -293,16 +297,18 @@ export default class Agents extends View {
       const space = sn(a);
       const name = more || space || label(a);
       const under = [space && space !== name ? space : null, machine ? machineName(machine) : null].filter(Boolean).join(" \u00b7 ");
+      // Dense: one line, the space and machine dimmed after the name.
+      const two = Boolean(under) && !dense();
       const timing = turnLabel(turn(a.address, a.status, now)) || (when ? duration(now - when) : "");
       return h_flex()
         .id(`ag-${a.address}`)
         .px(8)
-        .h(under ? 44 : 30)
+        .h(two ? 44 : 30)
         .flex_none()
         .rounded(8)
         // Two lines: everything beside the text lines up with the first one.
-        .when(Boolean(under), (el) => el.items_start().pt(5))
-        .when(!under, (el) => el.items_center())
+        .when(two, (el) => el.items_start().pt(5))
+        .when(!two, (el) => el.items_center())
         .gap(9)
         .when(a.focused, (el) => el.bg(t.selected))
         .cursor_pointer()
@@ -319,9 +325,12 @@ export default class Agents extends View {
             this.folded.has(a.address) ? this.folded.delete(a.address) : this.folded.add(a.address);
             cx.notify();
           })).child(pic)))
-        .child(v_flex().flex_1().min_w(0).gap(1)
+        .when(two, el => el.child(v_flex().flex_1().min_w(0).gap(1)
           .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(Boolean(under), el => el.child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(under))))
+          .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(under))))
+        .when(!two, el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
+          .child(div().min_w(0).flex_shrink(0).max_w(under ? 140 : 260).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+          .when(Boolean(under), el => el.child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(`\u00b7 ${under}`)))))
         .child(h_flex().h(20).flex_none().gap(9).items_center()
           .when(subs.length > 0, el => el.child(fold(a, subs)))
           .when(this.hovered === a.address, el => el.child(pin))
@@ -365,6 +374,10 @@ export default class Agents extends View {
         .when(!open, (el) => el
           .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));
     };
+    // Folded to its header (never on the narrow rail, which has no header).
+    const shut = folded() && !collapsed;
+    keepFolded("screenshot-agents", HEADER);
+    const urgent = list.reduce((m, a) => ((rankOf(a) ?? 0) > (RANK[m] ?? 0) ? Object.keys(RANK).find((k) => RANK[k] === rankOf(a)) : m), null);
     const rows = collapsed
       ? list.flatMap(withKids)
       : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);
@@ -386,14 +399,26 @@ export default class Agents extends View {
             .flex_none()
             .items_center()
             .justify_between()
-            .child(div().text_size(11.5).font_medium().text_color(t.dim).child("Agents")),
+            // The title folds the section; folded, it says how many and the most urgent state.
+            .child(h_flex().id("ag-fold").gap(6).items_center().cursor_pointer().text_size(11.5).font_medium().text_color(t.dim)
+              .hover((s) => s.text_color(t.foreground))
+              .on_click((_e, cx) => { toggleFold("screenshot-agents", HEADER); cx.notify(); })
+              .child("Agents")
+              .when(shut, (el) => el.child(div().text_color(t.dim).child(String(list.length))))
+              .when(shut && Boolean(urgent) && urgent !== "idle", (el) => el.child(this.status(t, { status: urgent }, true)))
+              .child(svg(`mods/workspace-chrome/chevron-${shut ? "right" : "down"}.svg`).size(11).flex_none()))
+            .child(div().id("ag-dense").p(2).rounded(4).text_color(dense() ? t.accent : t.dim)
+              .hover((s) => s.bg(t.hover).text_color(t.foreground))
+              .tooltip(dense() ? "Roomier rows" : "Denser rows")
+              .on_click((_e, cx) => { toggleDense(); cx.notify(); })
+              .child(svg("mods/screenshot-agents/list.svg").size(13))),
         ),
       )
-      .when(list.length === 0 && !collapsed, (el) =>
+      .when(list.length === 0 && !collapsed && !shut, (el) =>
         el.child(div().px(12).text_size(12).text_color(t.dim).child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")),
       )
-      .child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows))
-      .child(
+      .when(!shut || collapsed, (el) => el.child(v_flex().id("ag-list").flex_1().min_h(0).px(collapsed ? 0 : 8).overflow_y_scrollbar().mode("always").children(rows)))
+      .when(!shut || collapsed, (el) => el.child(
         h_flex()
           .h(28)
           .px(12)
@@ -409,6 +434,6 @@ export default class Agents extends View {
               .on_click(toggleSidebar)
               .child(collapsed ? "»" : ""),
           ),
-      );
+      ));
   }
 }

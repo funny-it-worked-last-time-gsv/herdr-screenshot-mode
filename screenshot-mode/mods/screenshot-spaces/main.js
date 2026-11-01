@@ -6,7 +6,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText, tabMasked, matches, aliased } from "./privacy.js";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -543,42 +543,49 @@ export default class Spaces extends View {
       }));
       kids(k.address, depth + 1);
     });
+    // What a pane adds after its tab's name: an agent's own title, or a shell's last
+    // command (the `cmd` label screenshot-mode/last-command.zsh sets). Commands can
+    // hold tokens and passwords no phrase would catch, so screenshot mode never shows them.
+    const detailOf = (tab, p, a) => {
+      if (a) return tabText(tab.id, (a.title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim(), null) || null;
+      return privacyOn() ? null : all.find((k) => k.address === p.terminal)?.labels?.cmd || null;
+    };
     for (const tab of w.tabs ?? []) {
       const mine = ps.filter((p) => p.tab === tab.id && p.terminal);
       const lead = mine.find((p) => p.program?.agent) ?? mine.find((p) => p.focused) ?? mine[0];
       const real = tab.named ? tab.name : lead?.program?.name || `Tab ${tab.index}`;
-      rows.push(this.treeRow(t, {
-        id: `tab-${tab.id}`, depth: 0, tab, on: w.active && tab.id === focused,
-        text: tabText(tab.id, real, `Tab ${tab.index}`), status: tab.status,
-        click: () => { if (!w.active) run("space.select", { id: w.id }); run("tab.select", { id: tab.id }); },
-      }));
-      for (const a of ags.filter((a) => a.tab === tab.id)) {
+      const name = tabText(tab.id, real, `Tab ${tab.index}`);
+      const selectTab = () => { if (!w.active) run("space.select", { id: w.id }); run("tab.select", { id: tab.id }); };
+      // One pane: the tab and what runs in it are one row, "tab · detail".
+      if (mine.length <= 1) {
+        const p = mine[0], a = p && ags.find((x) => x.pane === p.pane);
+        const detail = p && detailOf(tab, p, a);
+        const same = (x) => !x || [name, p?.program?.name].some((y) => y?.toLowerCase() === x.toLowerCase());
         rows.push(this.treeRow(t, {
-          id: `agent-${a.address}`, depth: 1, pic: a.program, on: a.focused,
-          text: tabText(tab.id, (a.title || "").replace(/^[^\p{L}\p{N}]+/u, "").trim() || a.program?.name || "Agent", a.program?.name || "Agent"),
-          status: a.status,
-          click: () => run("pane.focus", { pane: a.pane }),
+          id: `tab-${tab.id}`, depth: 0, tab: !p?.program?.icon, pic: p?.program, on: w.active && tab.id === focused,
+          text: name, detail: same(detail) ? null : detail, mono: !a && !same(detail), status: a ? a.status : tab.status,
+          click: p ? () => run("pane.focus", { pane: p.pane }) : selectTab,
         }));
-        kids(a.address, 2);
+        if (a) kids(a.address, 1);
+        continue;
       }
-      // Shells and other programs: the last command they ran (the `cmd` label
-      // screenshot-mode/last-command.zsh sets), else nothing to add.
-      for (const p of mine.filter((p) => !p.program?.agent)) {
-        const cmd = all.find((k) => k.address === p.terminal)?.labels?.cmd;
-        if (!cmd) continue;
-        const hide = tabMasked(tab.id) || (privacyOn() && matches(cmd));
+      // A split: the tab, then each pane under it.
+      rows.push(this.treeRow(t, { id: `tab-${tab.id}`, depth: 0, tab: true, on: w.active && tab.id === focused, text: name, status: tab.status, click: selectTab }));
+      for (const p of mine) {
+        const a = ags.find((x) => x.pane === p.pane);
         rows.push(this.treeRow(t, {
-          id: `cmd-${p.pane}`, depth: 1, pic: p.program, on: p.focused && w.active, mono: true,
-          text: hide ? aliased(cmd) ?? p.program?.name ?? "Terminal" : cmd,
-          click: () => run("pane.focus", { pane: p.pane }),
+          id: `pane-${p.pane}`, depth: 1, pic: p.program, on: p.focused && w.active,
+          text: detailOf(tab, p, a) || p.program?.name || "Terminal", mono: !a && !privacyOn() && Boolean(detailOf(tab, p, a)),
+          status: a?.status, click: () => run("pane.focus", { pane: p.pane }),
         }));
+        if (a) kids(a.address, 2);
       }
     }
     return rows;
   }
 
   // One row in a space's tree, indented by depth under the space's name.
-  treeRow(t, { id, depth, pic, tab, text, status, on, click, mono }) {
+  treeRow(t, { id, depth, pic, tab, text, detail, status, on, click, mono }) {
     const icon = !pic?.icon ? null : pic.tint ? svg(pic.icon).size(13).flex_none().text_color(t.muted) : image(pic.icon).w(13).h(13).flex_none();
     return h_flex().id(id).h(24).flex_none().pl(35 + depth * 14).pr(8).gap(7).items_center().rounded(6)
       .text_size(12).text_color(on ? t.foreground : t.muted)
@@ -587,7 +594,10 @@ export default class Spaces extends View {
       .on_click(click)
       .when(Boolean(tab), el => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim)))
       .when(Boolean(icon), el => el.child(icon))
-      .child(div().flex_1().min_w(0).truncate().when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(text))
+      .when(!detail, el => el.child(div().flex_1().min_w(0).truncate().when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(text)))
+      .when(Boolean(detail), el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
+        .child(div().flex_shrink(0).max_w(140).truncate().child(text))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(`\u00b7 ${detail}`))))
       .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(status === "blocked" || status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(tone(t, status))));
   }

@@ -65,8 +65,6 @@ export default class Spaces extends View {
     this.over = null;
     this.machines = [];
     this.folded = new Set(JSON.parse(localStorage.getItem("machines.folded") ?? "[]"));
-    // Spaces opened or closed by hand (their tabs, agents and sub-agents listed under them).
-    this.open = JSON.parse(localStorage.getItem("spaces.open") ?? "{}");
     this.refreshMachines(cx);
     cx.timer.every(15000, cx => this.refreshMachines(cx));
     // `git status` walks the whole tree, on another machine a process there:
@@ -428,14 +426,15 @@ export default class Spaces extends View {
   // Whether a space lists its tabs, agents and sub-agents under it.
   // `this.open[w.id]` is true or false once someone clicked its chevron, else undefined.
   expanded(w) {
+    // Spaces opened or closed by hand. Read here, not in init: a saved mod reloads without init.
+    this.open ??= JSON.parse(localStorage.getItem("spaces.open") ?? "{}");
     // Closed until someone opens it.
     return this.open[w.id] ?? false;
   }
 
-  // The fold chevron: on hover, and always while open.
+  // The fold chevron, always there: dim while closed.
   chevron(w, t) {
     const open = this.expanded(w);
-    if (!open && this.hoverRow !== `space-${w.id}`) return null;
     return div().id(`space-fold-${w.id}`).flex_none().p(2).rounded(4).text_color(t.dim)
       .hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())

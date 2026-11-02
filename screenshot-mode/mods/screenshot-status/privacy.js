@@ -4,10 +4,12 @@
 // hand, or when its name, title, folder, repo or branch contains a phrase (any case).
 // When on, a hidden name whose matching phrases all have aliases shows with those swapped
 // in ("top secret client name api" -> "bob api"). Otherwise, and always for items marked by hand,
-// it shows a stand-in: "Space N", "Machine N", or a tab's program name.
+// it shows a stand-in: a smudge (see smudge) for a space or machine, or a tab's program name.
 // Every mod that draws a name has an identical copy of this file.
 
 import { shared, setShared, spaces, panes } from "herdr";
+import { div } from "gpui-kit";
+import { h_flex } from "gpui-base";
 
 const state = () => {
   const s = shared("privacy");
@@ -100,18 +102,36 @@ export function aliased(text) {
 // Marked by hand (itself or its machine): the whole name goes, aliases or not.
 const byHand = (w) => !!w && (isMarked(spaceKey(w.id)) || (!!w.machine && isMarked(machineKey(w.machine))));
 
-// Stable stand-ins: position in the list, so a screenshot reads naturally.
+// A hidden name without an alias becomes a smudge: a marker character standing for a
+// soft bar whose width is one of four sizes, picked from the name's length. show()
+// draws it; the real text is never drawn. The size says roughly how long the name
+// is, never more.
+const SMUDGE = /[\uE001-\uE004]/g;
+const WIDTHS = { "\uE001": 34, "\uE002": 58, "\uE003": 86, "\uE004": 116 };
+export function smudge(text) {
+  const n = [...(text ?? "")].length;
+  return n <= 6 ? "\uE001" : n <= 12 ? "\uE002" : n <= 20 ? "\uE003" : "\uE004";
+}
+
+// Text as an element child: plain text as it is, smudges as bars. `t`: theme().
+export function show(text, t) {
+  if (typeof text !== "string" || !SMUDGE.test(text)) return text;
+  SMUDGE.lastIndex = 0;
+  const parts = text.split(/([\uE001-\uE004])/).filter(Boolean);
+  return h_flex().min_w(0).gap(4).items_center().children(parts.map((x) => WIDTHS[x]
+    ? div().w(WIDTHS[x]).h(9).flex_none().rounded(5).bg(t.muted).opacity(0.35)
+    : div().flex_none().child(x)));
+}
+
 export function spaceName(w) {
   if (!spaceMasked(w)) return w.name;
-  return (!byHand(w) && aliased(w.name)) || `Space ${spaces().findIndex((x) => x.id === w.id) + 1}`;
+  return (!byHand(w) && aliased(w.name)) || smudge(w.name);
 }
 
 export function machineName(name) {
   if (!machineMasked(name)) return name;
   if (!isMarked(machineKey(name))) { const a = aliased(name); if (a) return a; }
-  const names = [...new Set(spaces().map((w) => w.machine).filter(machineHidden).concat(
-    state().hidden.filter((k) => k.startsWith("machine:")).map((k) => k.slice(8)), [name]))].sort();
-  return `Machine ${names.indexOf(name) + 1}`;
+  return smudge(name);
 }
 
 // Any text belonging to a tab (its name, a terminal's title or folder, a branch): as is when

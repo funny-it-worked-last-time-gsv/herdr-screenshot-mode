@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, window, layout } from "herdr";
-import { spaceName, machineName, tabText } from "./privacy.js";
+import { spaceName, machineName, tabText, show } from "./privacy.js";
 import { turn, label as turnLabel, prune } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 
@@ -323,11 +323,11 @@ export default class Agents extends View {
             cx.notify();
           })).child(pic)))
         .when(two, el => el.child(v_flex().flex_1().min_w(0).gap(1)
-          .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(under))))
+          .child(div().min_w(0).truncate().text_color(idle ? t.muted : t.foreground).child(show(name, t)))
+          .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(show(under, t)))))
         .when(!two, el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().min_w(0).flex_shrink(0).max_w(under ? 140 : 260).truncate().text_color(idle ? t.muted : t.foreground).child(name))
-          .when(Boolean(under), el => el.child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(`\u00b7 ${under}`)))))
+          .child(div().min_w(0).flex_shrink(0).max_w(under ? 140 : 260).truncate().text_color(idle ? t.muted : t.foreground).child(show(name, t)))
+          .when(Boolean(under), el => el.child(div().flex_1().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(show(`\u00b7 ${under}`, t))))))
         .child(h_flex().h(20).flex_none().gap(9).items_center()
           .when(subs.length > 0, el => el.child(fold(a, subs)))
           .when(this.hovered === a.address, el => el.child(pin))

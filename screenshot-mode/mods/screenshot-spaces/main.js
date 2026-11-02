@@ -6,7 +6,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText } from "./privacy.js";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText, show } from "./privacy.js";
 import { turn, command, label as turnLabel } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 import { spaceColor, tint } from "./colors.js";
@@ -146,7 +146,7 @@ export default class Spaces extends View {
       .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
         .child(div().text_size(11).text_color(t.dim).child("Esc")))
       .child(div().text_size(11.5).text_color(t.muted).child("In screenshot mode, any space, machine, tab or terminal whose name, title, folder, repo or branch contains one of these (any case) is hidden."))
-      .child(div().text_size(11.5).text_color(t.muted).child("With an alias, the phrase is swapped for it (\"top secret client name\" shows as \"bob\"). Without one, the name becomes \"Space 2\" or similar. Click a phrase to edit it."))
+      .child(div().text_size(11.5).text_color(t.muted).child("With an alias, the phrase is swapped for it (\"top secret client name\" shows as \"bob\"). Without one, the name becomes a smudge. Click a phrase to edit it."))
       .child(h_flex().gap(8).child(div().flex_1().child(box(this.input, true))).child(div().w(140).flex_none().child(box(this.alias, false))))
       .child(v_flex().id("phrase-list").flex_none().h(Math.min(Math.max(list.length, 1) * 30, 220)).gap(2).overflow_y_scrollbar()
         .when(!list.length, el => el.child(div().py(6).text_color(t.dim).child("No phrases yet.")))
@@ -326,7 +326,7 @@ export default class Spaces extends View {
     const row = (key, icon, name, action, hint = "", enabled = true) => h_flex().id(key).h(31).px(9).gap(10).rounded(7).items_center().flex_none()
       .text_color(enabled ? t.foreground : t.dim).when(enabled, el => el.hover(s => s.bg(t.selected)))
       .on_click(() => { if (enabled) { done(); action(); } })
-      .child(icon).child(div().flex_1().min_w(0).truncate().child(name)).child(div().text_size(11).text_color(t.dim).child(hint));
+      .child(icon).child(div().flex_1().min_w(0).truncate().child(show(name, t))).child(div().text_size(11).text_color(t.dim).child(hint));
     const icon = (path) => svg(`mods/workspace-chrome/${path}.svg`).size(14).text_color(t.muted);
     const line = () => div().h(1).mx(4).my(5).bg(t.border).flex_none();
     const start = (a) => run("tab.new", { name: a.name, space: id, argv: a.run });
@@ -338,7 +338,7 @@ export default class Spaces extends View {
         if (a) { done(); start(a); }
       })
       .when(p.own && Boolean(space), el => el
-        .child(div().px(9).pt(4).pb(4).text_size(11).text_color(t.dim).truncate().child(spaceName(space)))
+        .child(div().px(9).pt(4).pb(4).text_size(11).text_color(t.dim).truncate().child(show(spaceName(space), t)))
         .child(row("rename", icon("square-pen"), "Rename", () => run("space.rename", { id })))
         // The space's color: shared "space.colors", read by every mod that draws spaces.
         // The menu stays open so colors can be tried.
@@ -416,7 +416,7 @@ export default class Spaces extends View {
           cx.notify();
         })
         .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
-        .when(!collapsed, el => el.child(div().flex_1().truncate().child(m ? machineName(m) : "This computer"))
+        .when(!collapsed, el => el.child(div().flex_1().truncate().child(show(m ? machineName(m) : "This computer", t)))
           .when(Boolean(m), el => { const e = this.eye(`machine-${m}`, machineKey(m), machineHidden(m), t); return e ? el.child(e) : el; })
           .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
@@ -515,9 +515,9 @@ export default class Spaces extends View {
           .items_center()
           .when(Boolean(tree), el => el.pl(22).child(svg("mods/workspace-chrome/branch.svg").size(13).text_color(t.dim)))
           .when(!tree, el => el.child(h_flex().size(18).flex_none().rounded(5).bg(fill).items_center().justify_center().text_size(10.5).font_bold().text_color("#ffffff").child(masked ? "•" : [...w.name][0]?.toUpperCase() ?? "?")))
-          .when(Boolean(tail), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(name)))
+          .when(Boolean(tail), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.foreground).child(show(name, t))))
           .when(!tail, el => el
-            .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(name))
+            .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(show(name, t)))
             .child((g && !dense() ? null : g && this.gitTail(g, tree, name, t)) || div().flex_1()))
           .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; })
           .when(true, el => { const c = this.chevron(w, t); return c ? el.child(c) : el; }),
@@ -687,7 +687,7 @@ export default class Spaces extends View {
     }
     if (changed) setShared("space.colors", kept);
     const tip = privacyOn()
-      ? ["Screenshot mode is ON", "Marked spaces and machines show as \"Space N\" / \"Machine N\".", "Click the eye or press Cmd+Shift+H to turn it off.", "Click the pen to edit the hide phrases."]
+      ? ["Screenshot mode is ON", "Marked spaces and machines show as a smudge.", "Click the eye or press Cmd+Shift+H to turn it off.", "Click the pen to edit the hide phrases."]
       : ["Screenshot mode", "1. Hover a space or machine and click its eye to mark it hidden.", "2. Click this eye or press Cmd+Shift+H to mask marked names.", "3. Click the pen to edit phrases that hide matching names automatically."];
     // Folded to its header (never on the narrow rail, which has no header).
     const shut = folded() && !collapsed;

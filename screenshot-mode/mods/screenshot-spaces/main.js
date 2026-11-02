@@ -101,18 +101,20 @@ export default class Spaces extends View {
   // hover, and always (dim) while marked so you can see what will be masked.
   // `hidden`: marked by hand or matched by a phrase. A phrase match can't be unmarked
   // here, so clicking it opens the phrase list instead.
-  eye(id, key, hidden, t) {
-    const marked = isMarked(key);
+  // `name`: the row's real name, which the dialog offers to rename or smudge.
+  eye(id, key, hidden, t, name) {
     if (this.hoverRow !== id && !(hidden && !privacyOn())) return null;
     return div().id(`eye-${id}`).flex_none().p(2).rounded(4).text_color(hidden ? t.accent : t.dim)
       .hover(s => s.bg(t.hover).text_color(t.foreground))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => { cx.stop_propagation(); hidden && !marked ? this.openEditor() : toggleMarked(key); cx.notify(); })
+      .on_click((_e, cx) => { cx.stop_propagation(); this.openEditor({ key, name }); })
       .child(svg(`mods/screenshot-spaces/${hidden ? "eye-off" : "eye"}.svg`).size(12));
   }
 
-  openEditor() {
-    openOverlay({ mod: "screenshot-spaces", kind: "dialog", width: 380, height: 420, props: { phrases: true } });
+  // The phrase dialog; with `target` ({ key, name }: a row's eye) it starts with that
+  // row's choices: rename it (an alias), smudge it, or show it.
+  openEditor(target = null) {
+    openOverlay({ mod: "screenshot-spaces", kind: "dialog", width: 400, height: target ? 540 : 420, props: { phrases: true, target } });
   }
 
   // The phrase list dialog (this mod opened as an overlay with { phrases: true }).
@@ -130,13 +132,50 @@ export default class Spaces extends View {
     };
     this.input.on("submit", add);
     this.alias.on("submit", add);
-    this.input.focus();
-    cx.timer.after(300, () => this.input.focus());
+    const target = props().target;
+    if (target) {
+      const now = phrases().find((ph) => ph.text.toLowerCase() === target.name.toLowerCase());
+      this.rename = InputState.new({ value: now?.alias ?? "", placeholder: "Show it as\u2026" });
+      this.rename.on("submit", (_e, cx) => { this.choose("rename"); cx.notify(); });
+    }
+    const first = this.rename ?? this.input;
+    first.focus();
+    cx.timer.after(300, () => first.focus());
     this.handle = cx.focus_handle();
+  }
+
+  // A row's choice in the dialog. Rename: a phrase of its exact name with the alias typed
+  // (and no longer marked by hand, which would smudge it anyway). Smudge: marked by hand.
+  // Show: unmarked, and any phrase of its exact name removed.
+  choose(how) {
+    const { key, name } = props().target;
+    const same = (ph) => ph.text.toLowerCase() === name.toLowerCase();
+    const alias = this.rename.value().trim();
+    if (how === "rename" && !alias) return this.choose("smudge");
+    if (how !== "smudge" && isMarked(key)) toggleMarked(key);
+    if (how === "smudge" && !isMarked(key)) toggleMarked(key);
+    if (how === "rename") setPhrases([...phrases().filter((ph) => !same(ph)), { text: name, alias }]);
+    if (how === "show") { setPhrases(phrases().filter((ph) => !same(ph))); this.rename.set_value(""); }
+  }
+
+  // What the row shows in screenshot mode now, for the dialog's target section.
+  targetNow(key, name) {
+    const isSpace = key.startsWith("space:");
+    const w = isSpace && spaces().find((x) => x.id === key.slice(6));
+    const hidden = isSpace ? Boolean(w) && spaceHidden(w) : machineHidden(name);
+    if (!hidden) return "Shown as it is";
+    if (isMarked(key)) return "Smudged";
+    const alias = phrases().find((ph) => ph.text.toLowerCase() === name.toLowerCase())?.alias;
+    if (alias) return `Renamed to \u201c${alias}\u201d`;
+    return "Hidden by a phrase below";
   }
 
   editor() {
     const t = theme();
+    const target = props().target;
+    const button = (id, label, how, solid = false) => h_flex().id(id).h(30).px(12).items_center().rounded(7).cursor_pointer().font_medium().flex_none()
+      .bg(solid ? t.solid : t.raised).text_color(solid ? t.solid_foreground : t.foreground).hover(s => s.opacity(0.85))
+      .on_click((_e, cx) => { this.choose(how); cx.notify(); }).child(label);
     const list = phrases();
     const done = () => closeOverlay(props().overlay);
     const box = (state, accent) => Input.new(state).h(34).px(10).rounded(8).border_1().border_color(accent ? t.accent : t.input).bg(t.background).text_size(12.8);
@@ -145,6 +184,18 @@ export default class Spaces extends View {
       .size_full().min_h(0).p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(12.5)
       .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
         .child(div().text_size(11).text_color(t.dim).child("Esc")))
+      .when(Boolean(target), el => el.child(v_flex().gap(8).p(12).rounded(10).bg(t.raised).flex_none()
+        .child(h_flex().gap(8).items_center()
+          .child(div().flex_1().min_w(0).truncate().font_semibold().child(target.name))
+          .child(div().flex_none().text_size(11).text_color(t.muted).child(this.targetNow(target.key, target.name))))
+        .child(h_flex().gap(6).items_center()
+          .child(div().flex_1().min_w(0).child(box(this.rename, true)))
+          .child(button("t-rename", "Rename", "rename", true)))
+        .child(h_flex().gap(6).items_center()
+          .child(button("t-smudge", "Smudge", "smudge"))
+          .child(button("t-show", "Show", "show"))
+          .child(div().flex_1())
+          .child(div().text_size(11).text_color(t.dim).child("Applies in screenshot mode")))))
       .child(div().text_size(11.5).text_color(t.muted).child("In screenshot mode, any space, machine, tab or terminal whose name, title, folder, repo or branch contains one of these (any case) is hidden."))
       .child(div().text_size(11.5).text_color(t.muted).child("With an alias, the phrase is swapped for it (\"top secret client name\" shows as \"bob\"). Without one, the name becomes a smudge. Click a phrase to edit it."))
       .child(h_flex().gap(8).child(div().flex_1().child(box(this.input, true))).child(div().w(140).flex_none().child(box(this.alias, false))))
@@ -417,7 +468,7 @@ export default class Spaces extends View {
         })
         .child(svg(`mods/workspace-chrome/${m ? "server" : "monitor"}.svg`).size(13).flex_none())
         .when(!collapsed, el => el.child(div().flex_1().truncate().child(show(m ? machineName(m) : "This computer", t)))
-          .when(Boolean(m), el => { const e = this.eye(`machine-${m}`, machineKey(m), machineHidden(m), t); return e ? el.child(e) : el; })
+          .when(Boolean(m), el => { const e = this.eye(`machine-${m}`, machineKey(m), machineHidden(m), t, m); return e ? el.child(e) : el; })
           .when(!connected, el => el.child(div().flex_none().child((machine?.state ?? "asleep").replace(/_/g, " "))))
           .when(connected, el => el.child(div().id(`machine-add-${m ?? "local"}`).flex_none().px(4).rounded(4).hover(s => s.bg(t.hover).text_color(t.foreground))
             .on_click((_e, cx) => { cx.stop_propagation(); run("space.new", m ? { machine: m } : {}); }).child("+")))
@@ -519,7 +570,7 @@ export default class Spaces extends View {
           .when(!tail, el => el
             .child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(show(name, t)))
             .child((g && !dense() ? null : g && this.gitTail(g, tree, name, t)) || div().flex_1()))
-          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t); return e ? el.child(e) : el; })
+          .when(true, el => { const e = this.eye(`space-${w.id}`, spaceKey(w.id), spaceHidden(w), t, w.name); return e ? el.child(e) : el; })
           .when(true, el => { const c = this.chevron(w, t); return c ? el.child(c) : el; }),
       )
       // Repo, branch and ahead/behind on a smaller line under the name (dense keeps one line).

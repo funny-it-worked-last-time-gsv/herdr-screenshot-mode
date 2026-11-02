@@ -32,6 +32,8 @@ See [screenshot-mode/RECIPE.md](screenshot-mode/RECIPE.md) for the details and h
 
 It plays nicely with [Sit & Watch](https://github.com/funny-it-worked-last-time-gsv/herdr-sit-and-watch). Keep the Sit & Watch block under the Agents list, and it takes the room when you fold the Spaces or Agents section.
 
+The [Sit & Watch layout](https://github.com/funny-it-worked-last-time-gsv/herdr-sit-and-watch-layout) has both set up together in one window, ready to switch to.
+
 ## Installation
 
 Ask your agent to add this mod (it reads every file first), or by hand:

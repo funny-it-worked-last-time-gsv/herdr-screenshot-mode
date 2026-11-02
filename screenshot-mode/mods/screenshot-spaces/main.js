@@ -173,6 +173,9 @@ export default class Spaces extends View {
   editor() {
     const t = theme();
     const target = props().target;
+    // The phrases and the row's real name are the secrets: smudged until the eye in the
+    // header reveals them (each time the dialog opens). Aliases are safe to show.
+    const secret = (x) => show(this.revealed ? x : smudge(x), t);
     const button = (id, label, how, solid = false) => h_flex().id(id).h(30).px(12).items_center().rounded(7).cursor_pointer().font_medium().flex_none()
       .bg(solid ? t.solid : t.raised).text_color(solid ? t.solid_foreground : t.foreground).hover(s => s.opacity(0.85))
       .on_click((_e, cx) => { this.choose(how); cx.notify(); }).child(label);
@@ -182,11 +185,16 @@ export default class Spaces extends View {
     return v_flex().id("phrases").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { done(); cx.stop_propagation(); } })
       .size_full().min_h(0).p(18).gap(10).bg(t.popover).text_color(t.foreground).text_size(12.5)
-      .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
+      .child(h_flex().gap(8).items_center().child(div().flex_1().text_size(15).font_semibold().child("Hide phrases"))
+        .child(div().id("ph-reveal").p(4).rounded(6).text_color(this.revealed ? t.accent : t.dim)
+          .hover(s => s.bg(t.hover).text_color(t.foreground))
+          .tooltip(this.revealed ? "Hide the phrases" : "Show the phrases")
+          .on_click((_e, cx) => { this.revealed = !this.revealed; cx.notify(); })
+          .child(svg(`mods/screenshot-spaces/${this.revealed ? "eye" : "eye-off"}.svg`).size(14)))
         .child(div().text_size(11).text_color(t.dim).child("Esc")))
       .when(Boolean(target), el => el.child(v_flex().gap(8).p(12).rounded(10).bg(t.raised).flex_none()
         .child(h_flex().gap(8).items_center()
-          .child(div().flex_1().min_w(0).truncate().font_semibold().child(target.name))
+          .child(div().flex_1().min_w(0).truncate().font_semibold().child(secret(target.name)))
           .child(div().flex_none().text_size(11).text_color(t.muted).child(this.targetNow(target.key, target.name))))
         .child(h_flex().gap(6).items_center()
           .child(div().flex_1().min_w(0).child(box(this.rename, true)))
@@ -203,8 +211,10 @@ export default class Spaces extends View {
         .when(!list.length, el => el.child(div().py(6).text_color(t.dim).child("No phrases yet.")))
         .children(list.map((ph, i) => h_flex().id(`ph-${i}`).h(28).px(8).gap(8).items_center().rounded(6).bg(t.raised)
           .cursor_pointer().hover(s => s.bg(t.hover))
-          .on_click((_e, cx) => { this.input.set_value(ph.text); this.alias.set_value(ph.alias); this.alias.focus(); cx.notify(); })
-          .child(div().flex_1().min_w(0).truncate().child(ph.text))
+          // Editing puts the phrase in the box, so only once revealed.
+          .when(!this.revealed, el => el.tooltip("Show the phrases to edit"))
+          .on_click((_e, cx) => { if (!this.revealed) return; this.input.set_value(ph.text); this.alias.set_value(ph.alias); this.alias.focus(); cx.notify(); })
+          .child(div().flex_1().min_w(0).truncate().child(secret(ph.text)))
           .child(div().max_w(150).truncate().text_color(ph.alias ? t.muted : t.dim).child(ph.alias ? `\u2192 ${ph.alias}` : "no alias"))
           .child(div().id(`ph-x-${i}`).p(3).rounded(4).text_color(t.dim).hover(s => s.bg(t.hover).text_color(t.foreground))
             .on_click((_e, cx) => { cx.stop_propagation(); setPhrases(list.filter((_, j) => j !== i)); cx.notify(); })

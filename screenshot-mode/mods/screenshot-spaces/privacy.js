@@ -136,15 +136,21 @@ export function machineName(name) {
 
 // Any text belonging to a tab (its name, a terminal's title or folder, a branch): as is when
 // the tab isn't masked, aliased when it can be, else `fallback`.
+// A hidden space whose name shows as a smudge (marked by hand, or no alias for its
+// name). Everything in it is smudged too: tabs, titles, folders, repo and branch.
+export function spaceSmudged(w) {
+  return !!w && spaceMasked(w) && (byHand(w) || !aliased(w.name));
+}
+
 export function tabText(tabId, text, fallback) {
   if (!tabMasked(tabId)) return text;
-  if (byHand(spaceOfTab(tabId))) return fallback;
+  if (spaceSmudged(spaceOfTab(tabId))) return text ? smudge(text) : fallback;
   return aliased(text) ?? fallback;
 }
 
 // Text that belongs to a space (its repo or branch).
 export function spaceText(w, text, fallback) {
   if (!spaceMasked(w) && !(privacyOn() && matches(text))) return text;
-  if (byHand(w)) return fallback;
+  if (spaceSmudged(w)) return text ? smudge(text) : fallback;
   return aliased(text) ?? fallback;
 }

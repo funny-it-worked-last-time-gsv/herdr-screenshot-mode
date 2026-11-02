@@ -6,7 +6,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { spaces, machines, panes, agents, terminals, knownAgents, keys, settings, run, openOverlay, exec, hc, theme, shared, setShared, watchFolder, window, layout, nextCommand, props, closeOverlay } from "herdr";
-import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText, show } from "./privacy.js";
+import { privacyOn, isMarked, toggleMarked, togglePrivacy, spaceKey, machineKey, spaceMasked, spaceName, machineName, spaceHidden, machineHidden, phrases, setPhrases, spaceText, tabText, show, smudge, spaceSmudged } from "./privacy.js";
 import { turn, command, label as turnLabel } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 import { spaceColor, tint } from "./colors.js";
@@ -502,7 +502,7 @@ export default class Spaces extends View {
       .items_center()
       .text_size(under ? 11 : 11.5)
       .text_color(t.dim)
-      .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(where)))
+      .when(Boolean(where), (el) => el.child(div().min_w(0).truncate().child(show(where, t))))
       .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\u2191${g.ahead}`)))
       .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\u2193${g.behind}`)));
   }
@@ -627,6 +627,8 @@ export default class Spaces extends View {
   children(w, t) {
     const color = spaceColor(w.id, t);
     const row = (o) => this.treeRow(t, { ...o, color });
+    // A smudged space smudges its sub-agents' names too (tabs and titles go through tabText).
+    const hush = (x) => (spaceSmudged(w) ? smudge(x) : x);
     const ps = panes(), ags = agents(), all = terminals();
     const shown = new Map(ags.map((a) => [a.address, a.status]));
     const focused = ps.find((p) => p.focused)?.tab;
@@ -635,7 +637,7 @@ export default class Spaces extends View {
       const st = shown.get(k.address) ?? k.status;
       rows.push(row({
         id: `sub-${k.address}`, depth, pic: k.program, tab: null, time: turnLabel(turn(k.address, st)),
-        text: k.name || k.template || k.program?.name || k.address,
+        text: hush(k.name || k.template || k.program?.name || k.address),
         status: st === "error" ? "blocked" : st === "done" ? "idle" : st,
         click: () => run("terminal.peek", { terminal: k.address }),
       }));
@@ -693,10 +695,10 @@ export default class Spaces extends View {
       .on_click(click)
       .when(Boolean(tab), el => el.child(svg("mods/workspace-chrome/layers.svg").size(12).flex_none().text_color(t.dim)))
       .when(Boolean(icon), el => el.child(icon))
-      .when(!detail, el => el.child(div().flex_1().min_w(0).truncate().when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(text)))
+      .when(!detail, el => el.child(div().flex_1().min_w(0).truncate().when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(show(text, t))))
       .when(Boolean(detail), el => el.child(h_flex().flex_1().min_w(0).gap(5).items_center()
-        .child(div().flex_shrink(0).max_w(140).truncate().child(text))
-        .child(div().flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(`\u00b7 ${detail}`))))
+        .child(div().flex_shrink(0).max_w(140).truncate().child(show(text, t)))
+        .child(div().flex_1().min_w(0).truncate().text_color(t.dim).when(Boolean(mono), el => el.font_family(settings()?.font_family ?? "JetBrains Mono").text_size(11.5)).child(show(`\u00b7 ${detail}`, t)))))
       .when(Boolean(time), el => el.child(div().flex_none().text_size(10.5).text_color(t.dim).child(time)))
       .when(status === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(11).flex_none().text_color(t.working).spin(900)))
       .when(status === "blocked" || status === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(tone(t, status))));

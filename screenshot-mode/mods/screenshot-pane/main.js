@@ -7,7 +7,7 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { panes, spaces, props, run, theme, home } from "herdr";
-import { tabText } from "./privacy.js";
+import { tabText, show } from "./privacy.js";
 import { spaceColor, tint } from "./colors.js";
 
 function icon(p, size, color) {
@@ -66,8 +66,8 @@ export default class Pane extends View {
       .on_hover((hovered, cx) => { this.hovered = hovered; cx.notify(); })
       .on_click(() => run("pane.focus", { pane }))
       .when(Boolean(pic), (el) => el.child(pic))
-      .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(name))
-      .child(div().flex_1().truncate().text_color(t.dim).child(tabText(p.tab, folder(p.cwd), "")))
+      .child(div().flex_none().truncate().max_w(260).font_medium().text_color(t.foreground).child(show(name, t)))
+      .child(div().flex_1().truncate().text_color(t.dim).child(show(tabText(p.tab, folder(p.cwd), ""), t)))
       .when(st === "working", el => el.child(svg("mods/workspace-chrome/spinner.svg").size(12).flex_none().text_color(t.working).spin(900)))
       .when(st === "blocked", el => el.child(div().flex_none().px(6).h(18).flex().items_center().rounded(5).bg(t.blocked + "26").text_size(10.5).font_semibold().text_color(t.blocked).child("Needs you")))
       .when(st === "done", el => el.child(div().size(7).flex_none().rounded(4).bg(t.done)))

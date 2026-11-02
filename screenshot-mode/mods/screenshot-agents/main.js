@@ -4,7 +4,7 @@
 import { View, div, image, svg } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { agents, terminals, panes, focused, spaces, run, theme, shared, setShared, setAgentOrder, window, layout } from "herdr";
-import { spaceName, machineName, tabText, show } from "./privacy.js";
+import { spaceName, machineName, tabText, show, smudge, spaceSmudged } from "./privacy.js";
 import { turn, label as turnLabel, prune } from "./timing.js";
 import { folded, dense, toggleFold, toggleDense, keepFolded } from "./section.js";
 
@@ -144,7 +144,8 @@ export default class Agents extends View {
     });
   }
 
-  subRow(t, s, shown, compact) {
+  // `hush`: its agent's space is smudged, so its name is too.
+  subRow(t, s, shown, compact, hush = false) {
     const k = s.t;
     const st = kidStatus(k, this.listed);
     const pic = icon(k.program, 14, t.foreground);
@@ -166,7 +167,7 @@ export default class Agents extends View {
         .when(Boolean(l), el => el.border_l(1.5).border_color(t.input))
         .when(l === "└" || l === "├", el => el.border_b(1.5).rounded_bl(6))))
       .when(Boolean(pic), el => el.child(div().mr(8).child(pic)))
-      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(k.name || k.template || k.program?.name || k.address))
+      .child(div().flex_1().truncate().text_color(on ? t.foreground : t.muted).child(show(hush ? smudge(k.name || k.template || k.program?.name || k.address) : k.name || k.template || k.program?.name || k.address, t)))
       .child(this.status(t, { status: st }, compact));
   }
 
@@ -205,7 +206,7 @@ export default class Agents extends View {
       const subs = collapsed ? [] : this.tree(all, a.address);
       const r = row(a, i, subs);
       if (this.folded.has(a.address)) return [r];
-      return [r, ...subs.map((s) => this.subRow(t, s, shown, true))];
+      return [r, ...subs.map((s) => this.subRow(t, s, shown, true, spaceSmudged(spaces().find((x) => x.id === a.space))))];
     };
 
     // The fold chevron; folded, the count too, colored by the most urgent one.
